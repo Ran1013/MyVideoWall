@@ -5,7 +5,19 @@ import { useUpload } from '../composables/useUpload'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import LogoutButton from '../components/LogoutButton.vue'
 
-const { rows, addFiles, retry, applyCategory } = useUpload()
+const { rows, addFiles, retry, saveRowCategory } = useUpload()
+
+// 保存条目分类；若新建了分类名，成功后并入下拉选项
+async function saveRowCat(row) {
+  const cat = await saveRowCategory(row)
+  if (cat && !catSuggestions.value.includes(cat)) {
+    catSuggestions.value = [...catSuggestions.value, cat].sort()
+  }
+}
+// 从下拉里选了已有分类 → 立即保存；选「新建」/「不设分类」则等点保存
+function onCatPick(row) {
+  if (row.catPick && row.catPick !== '__new__') saveRowCat(row)
+}
 const dragging = ref(false)
 const fileInput = ref(null)
 const catSuggestions = ref([])
@@ -71,13 +83,18 @@ async function handle(files) {
             </button>
             <button v-if="row.state === 'fail'" class="row-btn" @click="retry(row)">重试</button>
           </div>
-          <input v-model="row.category" class="row-cat" type="text" list="cat-list"
-                 maxlength="60" placeholder="分类（可选，可输入或从已有分类里选）"
-                 @change="applyCategory(row)">
+          <div class="row-cat-line">
+            <select v-model="row.catPick" class="row-cat-select" @change="onCatPick(row)">
+              <option value="">（不设分类）</option>
+              <option v-for="c in catSuggestions" :key="c" :value="c">{{ c }}</option>
+              <option value="__new__">＋ 新建分类…</option>
+            </select>
+            <input v-if="row.catPick === '__new__'" v-model="row.newCat" class="row-cat-new" type="text"
+                   maxlength="60" placeholder="输入新分类名" @keyup.enter="saveRowCat(row)">
+            <button class="row-btn" @click="saveRowCat(row)">保存分类</button>
+            <span v-if="row.catMsg" class="cat-msg">{{ row.catMsg }}</span>
+          </div>
         </div>
-        <datalist id="cat-list">
-          <option v-for="c in catSuggestions" :key="c" :value="c"></option>
-        </datalist>
       </div>
 
     </div>
