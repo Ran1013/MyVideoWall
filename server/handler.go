@@ -707,7 +707,9 @@ func (h *Handler) adminSave(c *gin.Context) {
 		failJSON(c, 404, "视频不存在")
 		return
 	}
-	if err := h.store.VideoUpdate(in.ID, in.Title, in.Category); err != nil {
+	// 用 VideoPublish 而非 VideoUpdate：旧版页面没有「发布」按钮（只有保存），
+	// 若这里只改标题会留下永远不上线的草稿——保存即发布，兼容旧客户端且语义一致
+	if err := h.store.VideoPublish(in.ID, in.Title, in.Category); err != nil {
 		failJSON(c, 500, "保存失败")
 		return
 	}
