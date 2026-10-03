@@ -4,8 +4,10 @@ import { uploadApi, adminApi } from '../api'
 
 const sleep = ms => new Promise(res => setTimeout(res, ms))
 
+// rows 放在模块级：上传状态跨页面保留——切到首页/管理再回来，进度与待发布条目都还在
+const rows = reactive([])  // {name, pct, state, stateText, paused, file, uploadId}
+
 export function useUpload() {
-  const rows = reactive([])  // {name, pct, state, stateText, paused, file, uploadId}
 
   function updateRow(row, patch) { Object.assign(row, patch) }
 

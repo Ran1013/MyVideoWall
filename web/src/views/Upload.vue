@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { uploadApi, adminApi } from '../api'
 import { useUpload } from '../composables/useUpload'
 import ThemeToggle from '../components/ThemeToggle.vue'
@@ -25,6 +25,14 @@ async function saveRowCat(row) {
 // 从下拉里选了已有分类 → 立即保存；选「新建」/「不设分类」则等点保存
 function onCatPick(row) {
   if (row.catPick && row.catPick !== '__new__') saveRowCat(row)
+}
+
+// 待发布列表与批量发布
+const pendingRows = computed(() => rows.filter(r => r.state === 'done' && !r.published))
+async function publishAll() {
+  for (const row of pendingRows.value) {
+    await pubRow(row)
+  }
 }
 const dragging = ref(false)
 const fileInput = ref(null)
@@ -78,6 +86,10 @@ async function handle(files) {
         点击选择视频上传（手机可直接选相册/文件，iPhone 的 .MOV、OBS 的 .mkv 都支持）· 电脑支持拖拽，可多选
         <input ref="fileInput" type="file" multiple hidden
                accept="video/*,.mp4,.webm,.m4v,.mov,.mkv" @change="onFiles">
+      </div>
+
+      <div v-if="pendingRows.length" class="traffic-actions" style="margin-top: 14px">
+        <button class="btn" @click="publishAll">发布全部（{{ pendingRows.length }} 个待发布）</button>
       </div>
 
       <div class="rows">
