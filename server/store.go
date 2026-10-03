@@ -56,11 +56,25 @@ type Stats struct {
 
 const videoCols = "id, fname, title, category, ext, size, views, uploader_ip, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at"
 
+// ensureCNTimeZone 把 MySQL 会话时区固定为北京时间：created_at/ts 都用 SQL NOW() 写入，
+// 而 MySQL 容器默认 UTC，不设的话所有时间会差 8 小时。
+func ensureCNTimeZone(dsn string) string {
+	if strings.Contains(strings.ToLower(dsn), "time_zone") {
+		return dsn
+	}
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	// 值带单引号（URL 编码），驱动会执行 SET time_zone='+08:00'
+	return dsn + sep + "time_zone=%27%2B08%3A00%27"
+}
+
 func NewStore(dsn, dbName string) (*Store, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("MYSQL_DSN 未设置")
 	}
-	db, err := sql.Open("mysql", dsn)
+	db, err := sql.Open("mysql", ensureCNTimeZone(dsn))
 	if err != nil {
 		return nil, err
 	}

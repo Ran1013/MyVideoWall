@@ -5,8 +5,7 @@ import { useUpload } from '../composables/useUpload'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import LogoutButton from '../components/LogoutButton.vue'
 
-const { rows, addFiles, retry } = useUpload()
-const category = ref('')
+const { rows, addFiles, retry, applyCategory } = useUpload()
 const dragging = ref(false)
 const fileInput = ref(null)
 const catSuggestions = ref([])
@@ -31,7 +30,8 @@ async function handle(files) {
     const probe = await uploadApi.init(files[0].name, files[0].size, Math.ceil(files[0].size / chunkSize))
     if (probe.ok && probe.chunk_size) chunkSize = probe.chunk_size
   } catch { /* init 失败会在 useUpload 内部重试并报错 */ }
-  addFiles(Array.from(files), category.value.trim(), chunkSize)
+  // 传 getter：分类在 finish 时实时读取，先选文件后填分类也能生效
+  addFiles(Array.from(files), chunkSize)
 }
 </script>
 
@@ -48,35 +48,36 @@ async function handle(files) {
   <main class="center-wrap" style="align-items: flex-start;">
     <div class="panel wide" style="margin-top: 30px;">
       <h2>拖进来就传</h2>
-      <p class="tip">分片上传 · 断网/关页后重选同一文件自动续传 · 传完回 <router-link to="/">首页</router-link> 看</p>
+      <p class="tip">分片上传 · 断网/关页后重选同一文件自动续传 · 分类在每个视频下方单独填写（传完再改也行）· 传完回 <router-link to="/">首页</router-link> 看</p>
 
       <div class="dz" :class="{ over: dragging }"
            @click="pickFiles"
            @dragover.prevent="dragging = true"
            @dragleave="dragging = false"
            @drop.prevent="onDrop">
-        拖拽视频到这里，或点击选择文件（可多选）
+        点击选择视频上传（手机可直接选相册/文件，iPhone 的 .MOV、OBS 的 .mkv 都支持）· 电脑支持拖拽，可多选
         <input ref="fileInput" type="file" multiple hidden
-               accept=".mp4,.webm,.m4v,.mov" @change="onFiles">
-      </div>
-
-      <div class="upload-fields">
-        <input v-model="category" type="text" list="cat-list" placeholder="分类（可选，如：英雄联盟）" maxlength="60">
-        <datalist id="cat-list">
-          <option v-for="c in catSuggestions" :key="c" :value="c"></option>
-        </datalist>
+               accept="video/*,.mp4,.webm,.m4v,.mov,.mkv" @change="onFiles">
       </div>
 
       <div class="rows">
         <div v-for="(row, i) in rows" :key="row.name + i" class="row" :class="row.state">
-          <span class="fn" :title="row.name">{{ row.name }}</span>
-          <progress :value="row.pct" max="100"></progress>
-          <span class="st">{{ row.stateText }}</span>
-          <button v-if="row.state === 'uploading'" class="row-btn" @click="row.togglePause()">
-            {{ row.paused ? '继续' : '暂停' }}
-          </button>
-          <button v-if="row.state === 'fail'" class="row-btn" @click="retry(row)">重试</button>
+          <div class="row-line1">
+            <span class="fn" :title="row.name">{{ row.name }}</span>
+            <progress :value="row.pct" max="100"></progress>
+            <span class="st">{{ row.stateText }}</span>
+            <button v-if="row.state === 'uploading'" class="row-btn" @click="row.togglePause()">
+              {{ row.paused ? '继续' : '暂停' }}
+            </button>
+            <button v-if="row.state === 'fail'" class="row-btn" @click="retry(row)">重试</button>
+          </div>
+          <input v-model="row.category" class="row-cat" type="text" list="cat-list"
+                 maxlength="60" placeholder="分类（可选，可输入或从已有分类里选）"
+                 @change="applyCategory(row)">
         </div>
+        <datalist id="cat-list">
+          <option v-for="c in catSuggestions" :key="c" :value="c"></option>
+        </datalist>
       </div>
 
     </div>

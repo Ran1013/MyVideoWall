@@ -31,7 +31,10 @@ const router = createRouter({
 router.beforeEach(to => {
   if (to.name === 'login') return true
   if (!getToken()) return { name: 'login', query: { redirect: to.fullPath } }
-  if (to.meta.role === 'upload' && getRole() !== 'upload') return { name: 'wall' }
+  if (to.meta.role === 'upload' && getRole() !== 'upload') {
+    // 已登录但身份不够（如观看身份访问上传页）：回登录页并说明原因，不静默弹回
+    return { name: 'login', query: { redirect: to.fullPath, need: 'upload' } }
+  }
   return true
 })
 

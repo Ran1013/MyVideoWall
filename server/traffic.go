@@ -8,9 +8,10 @@ import (
 )
 
 // TrafficCounter 月度流量计数器（只计视频流出字节）：
-//   计数持久化到 data/traffic.json，每月 1 日自动清零；
-//   达到阈值（TRAFFIC_LIMIT_GB，默认 280）后视频流熔断（返回 503），
-//   管理端可查看用量、手动开/关限制、手动清零。
+//
+//	计数持久化到 data/traffic.json，每月 1 日自动清零；
+//	达到阈值（TRAFFIC_LIMIT_GB，默认 280）后视频流熔断（返回 503），
+//	管理端可查看用量、手动开/关限制、手动清零。
 type TrafficCounter struct {
 	mu      sync.Mutex
 	path    string

@@ -16,11 +16,11 @@ type TranscodeStore struct {
 }
 
 type TranscodeParams struct {
-	EdgePx   int `json:"edge_px"`     // 长边分辨率上限（720p=1280，1080p=1920）
-	Fps      int `json:"fps"`         // 帧率
-	Crf      int `json:"crf"`         // 质量基准（越小越清晰越耗流量）
+	EdgePx   int `json:"edge_px"`      // 长边分辨率上限（720p=1280，1080p=1920）
+	Fps      int `json:"fps"`          // 帧率
+	Crf      int `json:"crf"`          // 质量基准（越小越清晰越耗流量）
 	MaxrateK int `json:"maxrate_kbps"` // 码率上限 kbps
-	MaxMB    int `json:"max_mb"`      // 单文件转码上限 MB（超过跳过压缩原样播出；0=不限制）
+	MaxMB    int `json:"max_mb"`       // 单文件转码上限 MB（超过跳过压缩原样播出；0=不限制）
 }
 
 // 文件里出现越界值时的兜底范围

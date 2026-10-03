@@ -48,8 +48,8 @@ async function trafficReset() {
 // 转码画质快捷档（填充下面四个输入框，点「保存转码参数」才生效）
 const tcPresets = [
   { name: '流畅 · 最省流量', maxrate_kbps: 800, fps: 25, crf: 31, edge_px: 1280 },
-  { name: '标准 · 推荐', maxrate_kbps: 1200, fps: 30, crf: 28, edge_px: 1280 },
-  { name: '高清 1080p · 吃带宽', maxrate_kbps: 2000, fps: 30, crf: 26, edge_px: 1920 },
+  { name: '标准 · 推荐', maxrate_kbps: 2000, fps: 30, crf: 26, edge_px: 1280 },
+  { name: '高清 1080p · 吃带宽', maxrate_kbps: 3000, fps: 30, crf: 25, edge_px: 1920 },
 ]
 function applyPreset(p) {
   Object.assign(tc.value, { maxrate_kbps: p.maxrate_kbps, fps: p.fps, crf: p.crf, edge_px: p.edge_px })

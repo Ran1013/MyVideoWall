@@ -7,13 +7,14 @@ import (
 )
 
 // PasswordStore 站点密码存储：
-//   env（VIEW_PASSWORD/UPLOAD_PASSWORD）是初始默认值；
-//   管理端修改密码后持久化到 data/config.json，之后以文件为准（热生效）。
-//   token 的 secret 由两个密码派生——改密码 = 所有已发 token 立即失效。
+//
+//	env（VIEW_PASSWORD/UPLOAD_PASSWORD）是初始默认值；
+//	管理端修改密码后持久化到 data/config.json，之后以文件为准（热生效）。
+//	token 的 secret 由两个密码派生——改密码 = 所有已发 token 立即失效。
 type PasswordStore struct {
-	mu    sync.RWMutex
-	path  string
-	view  string
+	mu     sync.RWMutex
+	path   string
+	view   string
 	upload string
 }
 

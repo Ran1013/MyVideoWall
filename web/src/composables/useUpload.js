@@ -1,6 +1,6 @@
 // 分片上传（断点续传/重试/暂停）——从 v2 app.js 移植为 composable
 import { reactive } from 'vue'
-import { uploadApi } from '../api'
+import { uploadApi, adminApi } from '../api'
 
 const sleep = ms => new Promise(res => setTimeout(res, ms))
 
@@ -65,7 +65,15 @@ export function useUpload() {
 
       row.stateText = '服务器压缩中，请稍候…'
       row.pct = 100
-      const fin = await uploadApi.finish(row.uploadId, file.name.replace(/\.[^.]+$/, ''), row.category)
+      const title = file.name.replace(/\.[^.]+$/, '')
+      // 分类读取行内输入框的实时值：上传前/上传中/传完填都算数
+      const fin = await uploadApi.finish(row.uploadId, title, (row.category || '').trim())
+      if (!fin.ok) throw new Error(fin.error || '合并失败')
+      row.state = 'done'
+      row.stateText = '✓ 完成'
+      row.pct = 100
+      row.videoId = fin.id
+      row.title = title
       if (!fin.ok) throw new Error(fin.error || '合并失败')
       row.state = 'done'
       row.stateText = '✓ 完成'
@@ -76,15 +84,53 @@ export function useUpload() {
     }
   }
 
-  async function addFiles(files, category, chunkSize) {
+// 允许的扩展名（与服务端 ALLOWED_EXT 默认值一致；服务端仍会再校验）
+const ALLOWED_EXT = ['mp4', 'webm', 'm4v', 'mov', 'mkv']
+
+function extOf(name) {
+  const m = /\.([a-z0-9]+)$/i.exec(name || '')
+  return m ? m[1].toLowerCase() : ''
+}
+
+function failRow(f, msg) {
+  rows.unshift(reactive({
+    name: f && f.name ? f.name : '(未命名文件)', file: f, category: '',
+    pct: 0, state: 'fail', stateText: '✗ ' + msg, paused: false,
+    togglePause: () => {}, uploadId: '',
+  }))
+}
+
+async function addFiles(files, chunkSize) {
     for (const f of files) {
+      // 坏文件前置拦截：0 字节 / 扩展名不在白名单，直接标失败，不发起请求
+      if (!f.size) {
+        failRow(f, '文件大小为 0（可能选择失败或文件损坏），请重选')
+        continue
+      }
+      const ext = extOf(f.name)
+      if (!ALLOWED_EXT.includes(ext)) {
+        failRow(f, '不支持的格式 .' + (ext || '未知') + '（允许：' + ALLOWED_EXT.join(',') + '）')
+        continue
+      }
       const row = reactive({
-        name: f.name, file: f, category, chunkSize,
+        name: f.name, file: f, category: '', chunkSize,
         pct: 0, state: 'waiting', stateText: '准备中…', paused: false,
-        togglePause: () => {}, uploadId: '',
+        togglePause: () => {}, uploadId: '', videoId: 0, title: '',
       })
       rows.unshift(row)
       await uploadOne(row)
+    }
+  }
+
+// 传完之后在条目里补填/修改分类：直接调管理接口更新该视频
+async function applyCategory(row) {
+    if (row.state !== 'done' || !row.videoId) return
+    const cat = (row.category || '').trim()
+    try {
+      await adminApi.save(row.videoId, row.title || row.name.replace(/\.[^.]+$/, ''), cat)
+      row.stateText = cat ? ('✓ 完成 · 分类已存为「' + cat + '」') : '✓ 完成 · 分类已清空'
+    } catch (e) {
+      row.stateText = '✗ 分类保存失败：' + (e.message || '')
     }
   }
 
@@ -93,5 +139,5 @@ export function useUpload() {
     uploadOne(row)
   }
 
-  return { rows, addFiles, retry }
+  return { rows, addFiles, retry, applyCategory }
 }

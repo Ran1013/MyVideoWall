@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -13,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const mimeTypes = "mp4:video/mp4,m4v:video/mp4,webm:video/webm,mov:video/quicktime,jpg:image/jpeg,jpeg:image/jpeg,png:image/png"
+const mimeTypes = "mp4:video/mp4,m4v:video/mp4,webm:video/webm,mov:video/quicktime,mkv:video/x-matroska,jpg:image/jpeg,jpeg:image/jpeg,png:image/png"
 
 func mimeOf(ext string) string {
 	for _, pair := range strings.Split(mimeTypes, ",") {
@@ -340,13 +341,17 @@ func (h *Handler) uploadInit(c *gin.Context) {
 		Size   int64  `json:"size"`
 		Chunks int    `json:"chunks"`
 	}
-	if err := c.ShouldBindJSON(&in); err != nil {
+	body, _ := io.ReadAll(c.Request.Body)
+	if err := json.Unmarshal(body, &in); err != nil {
+		log.Printf("upload init body 解析失败: %v, body=%s", err, string(body))
 		failJSON(c, 400, "参数不对")
 		return
 	}
 	gcSessions(h.cfg.ChunksDir, h.cfg.ChunkTTLHours)
 
 	if in.Name == "" || in.Size <= 0 || in.Chunks <= 0 || in.Chunks > 100000 {
+		// 记下原始请求体：这类 400 依赖客户端 File 对象，出问题时要靠它定位
+		log.Printf("upload init 参数异常: name=%q size=%d chunks=%d body=%s", in.Name, in.Size, in.Chunks, string(body))
 		failJSON(c, 400, "参数不对")
 		return
 	}
@@ -513,16 +518,30 @@ func (h *Handler) uploadFinish(c *gin.Context) {
 		return
 	}
 
-	// 服务器自动压缩（适合小带宽流播放）；失败保留原文件，不影响上传
+	// 服务器自动压缩（适合小带宽流播放）；失败保留原文件，不影响上传。
+	// 转码产物一律是 H.264 MP4：源不是 mp4 时把文件名与扩展名一并改成 .mp4，
+	// 避免“mp4 内容顶着 .mkv/.mov 扩展名”被 Safari 等按容器误判而播放失败。
 	finalSize := m.Size
-		if ffmpegAvailable() {
-			if err := transcodeForWeb(dest, h.tc); err != nil {
-				log.Printf("自动压缩跳过：%v", err)
+	if ffmpegAvailable() {
+		replaced, err := transcodeForWeb(dest, h.tc)
+		if err != nil {
+			log.Printf("自动压缩跳过：%v", err)
+		}
+		if replaced && m.Ext != "mp4" {
+			base := strings.TrimSuffix(name, filepath.Ext(name))
+			newName := base + ".mp4"
+			for n := 2; fileExists(filepath.Join(h.cfg.VideoDir, newName)); n++ {
+				newName = fmt.Sprintf("%s-%d.mp4", base, n)
 			}
-		if fi, err := os.Stat(dest); err == nil {
+			if err := os.Rename(dest, filepath.Join(h.cfg.VideoDir, newName)); err == nil {
+				name = newName
+				m.Ext = "mp4"
+			}
+		}
+		if fi, err := os.Stat(filepath.Join(h.cfg.VideoDir, name)); err == nil {
 			finalSize = fi.Size()
 		}
-		generatePoster(dest) // 封面图：首页卡片只加载它，避免视频请求抢占带宽
+		generatePoster(filepath.Join(h.cfg.VideoDir, name)) // 封面图：首页卡片只加载它，避免视频请求抢占带宽
 	}
 
 	id, err := h.store.VideoAdd(name, defaultStr(in.Title, m.Base), truncateRunes(strings.TrimSpace(in.Cat), 60), m.Ext, finalSize, m.IP)

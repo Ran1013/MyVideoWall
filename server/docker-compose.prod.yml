@@ -13,7 +13,7 @@ services:
       VIEW_PASSWORD: ${VIEW_PASSWORD:-view123}
       UPLOAD_PASSWORD: ${UPLOAD_PASSWORD:-upload123}
       ALLOW_ORIGIN: ${ALLOW_ORIGIN:-}
-      ALLOWED_EXT: ${ALLOWED_EXT:-mp4,webm,m4v,mov}
+      ALLOWED_EXT: ${ALLOWED_EXT:-mp4,webm,m4v,mov,mkv}
       PAGE_SIZE: ${PAGE_SIZE:-60}
       CHUNK_MB: ${CHUNK_MB:-4}
       CHUNK_TTL_HOURS: ${CHUNK_TTL_HOURS:-24}

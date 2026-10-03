@@ -56,7 +56,7 @@ func loadConfig() *Config {
 		DBName:         getenv("DB_NAME", "MyVideos"),
 		TrafficLimitGB: getenvInt("TRAFFIC_LIMIT_GB", 280),
 	}
-	for _, e := range splitCSV(getenv("ALLOWED_EXT", "mp4,webm,m4v,mov")) {
+	for _, e := range splitCSV(getenv("ALLOWED_EXT", "mp4,webm,m4v,mov,mkv")) {
 		if e != "" {
 			c.AllowedExt = append(c.AllowedExt, e)
 		}

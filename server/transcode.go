@@ -13,8 +13,9 @@ import (
 )
 
 // 上传后自动压缩：把录制级大码率视频压成适合小带宽流播放的规格
-//   参数来自 TranscodeStore（管理端可调，默认 720p / 30fps / CRF28 / 码率上限 1.2Mbps / 单文件上限 4GB）
-//   单线程互斥：同一时间只压一个，避免 2C 小机器被撑爆
+//
+//	参数来自 TranscodeStore（管理端可调，默认 720p / 30fps / CRF28 / 码率上限 1.2Mbps / 单文件上限 4GB）
+//	单线程互斥：同一时间只压一个，避免 2C 小机器被撑爆
 const targetEdgePx = 1280 // 默认长边上限（720p）
 
 var transcodeMu sync.Mutex
@@ -24,26 +25,28 @@ func ffmpegAvailable() bool {
 	return err == nil
 }
 
-// transcodeForWeb 原地压缩 src（成功则替换，失败返回错误且保留原文件）
-func transcodeForWeb(src string, tc *TranscodeStore) error {
+// transcodeForWeb 原地压缩 src（产物一律 H.264 MP4）。
+// 返回 replaced=true 表示原文件已被转码产物替换（此时内容与扩展名可能不符，调用方应改名为 .mp4）；
+// 失败返回错误且保留原文件。
+func transcodeForWeb(src string, tc *TranscodeStore) (bool, error) {
 	bin, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		return fmt.Errorf("ffmpeg 不可用")
+		return false, fmt.Errorf("ffmpeg 不可用")
 	}
 	info, err := os.Stat(src)
 	if err != nil {
-		return err
+		return false, err
 	}
 	p := tc.Get()
 	if p.MaxMB > 0 && info.Size() > int64(p.MaxMB)*1024*1024 {
-		return fmt.Errorf("文件 %dMB 超过转码上限 %dMB，跳过", info.Size()/1048576, p.MaxMB)
+		return false, fmt.Errorf("文件 %dMB 超过转码上限 %dMB，跳过", info.Size()/1048576, p.MaxMB)
 	}
 	// 磁盘余量保护：源文件与转码临时文件并存，余量不足文件大小 2 倍时跳过（防撑爆磁盘殃及 MySQL）
 	var st syscall.Statfs_t
 	if statErr := syscall.Statfs(filepath.Dir(src), &st); statErr == nil {
 		free := int64(st.Bavail) * int64(st.Bsize)
 		if free < info.Size()*2 {
-			return fmt.Errorf("磁盘剩余仅 %.1fGB，不足 %.1fGB 文件的 2 倍，跳过压缩", float64(free)/1073741824, float64(info.Size())/1073741824)
+			return false, fmt.Errorf("磁盘剩余仅 %.1fGB，不足 %.1fGB 文件的 2 倍，跳过压缩", float64(free)/1073741824, float64(info.Size())/1073741824)
 		}
 	}
 
@@ -72,27 +75,28 @@ func transcodeForWeb(src string, tc *TranscodeStore) error {
 	out, err := exec.Command(bin, args...).CombinedOutput()
 	if err != nil {
 		os.Remove(dst)
-		return fmt.Errorf("ffmpeg 失败: %v (%s)", err, strings.TrimSpace(string(out)))
+		return false, fmt.Errorf("ffmpeg 失败: %v (%s)", err, strings.TrimSpace(string(out)))
 	}
 
 	fi, err := os.Stat(dst)
 	if err != nil || fi.Size() < 1024 {
 		os.Remove(dst)
-		return fmt.Errorf("转码产物无效")
+		return false, fmt.Errorf("转码产物无效")
 	}
 	// 产物明显更小才替换（避免把已优化的小文件变大）
 	if fi.Size() >= info.Size() {
 		os.Remove(dst)
 		log.Printf("转码产物 %dKB 不小于原文件 %dKB，保留原文件", fi.Size()/1024, info.Size()/1024)
-		return nil
+		return false, nil
 	}
 
-	os.Remove(src)
+	// 直接 rename 覆盖（原子操作，别先删后改——中途失败会两头空）
 	if err := os.Rename(dst, src); err != nil {
-		return err
+		os.Remove(dst)
+		return false, err
 	}
 	log.Printf("压缩完成：%dMB → %dMB", info.Size()/1048576, fi.Size()/1048576)
-	return nil
+	return true, nil
 }
 
 // generatePoster 从视频抽一帧当封面（<video>.jpg），首页卡片只加载这张小图，避免抢占带宽
