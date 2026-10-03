@@ -272,9 +272,24 @@ func (h *Handler) uploadHandler(c *gin.Context) {
 		h.uploadChunk(c)
 	case "finish":
 		h.uploadFinish(c)
+	case "abort":
+		h.uploadAbort(c)
 	default:
 		failJSON(c, 400, "未知操作")
 	}
+}
+
+// uploadAbort 废弃一个未完成的上传会话（取消/删除条目时调用）
+func (h *Handler) uploadAbort(c *gin.Context) {
+	var in struct {
+		UploadID string `json:"upload_id"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || !validUploadID(in.UploadID) {
+		failJSON(c, 400, "参数不对")
+		return
+	}
+	os.RemoveAll(filepath.Join(h.cfg.ChunksDir, in.UploadID))
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *Handler) chunkSizeBytes() int {
@@ -530,7 +545,7 @@ func (h *Handler) uploadFinish(c *gin.Context) {
 	if ffmpegAvailable() {
 		replaced, err := transcodeForWeb(dest, h.tc)
 		if err != nil {
-			log.Printf("自动压缩跳过：%v", err)
+			log.Printf("自动压缩跳过 [%s]：%v", name, err)
 		}
 		if replaced && m.Ext != "mp4" {
 			base := strings.TrimSuffix(name, filepath.Ext(name))

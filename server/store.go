@@ -362,6 +362,10 @@ func (s *Store) SyncVideos(videoDir string, allowedExt []string) error {
 			if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 				continue
 			}
+			// 转码临时文件不是视频（曾被误注册上线过），跳过
+			if strings.Contains(e.Name(), ".transcoding") {
+				continue
+			}
 			ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(e.Name()), "."))
 			allowed := false
 			for _, a := range allowedExt {
