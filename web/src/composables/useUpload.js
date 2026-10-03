@@ -12,6 +12,7 @@ export function useUpload() {
   function updateRow(row, patch) { Object.assign(row, patch) }
 
   async function uploadOne(row) {
+    if (row.canceled) { row.state = 'canceled'; row.stateText = '已取消'; return }
     const file = row.file
     row.pct = 0
     row.state = 'uploading'
@@ -22,7 +23,10 @@ export function useUpload() {
       row.paused = paused
     }
     const waitResume = () => new Promise(res => {
-      (function check() { paused ? setTimeout(check, 200) : res() })()
+      (function check() {
+        if (row.canceled) return res()
+        paused ? setTimeout(check, 200) : res()
+      })()
     })
 
     const CHUNK = row.chunkSize
@@ -62,8 +66,12 @@ export function useUpload() {
       for (let i = 0; i < total; i++) {
         if (receivedMap[i]) continue
         await waitResume()
+        if (row.canceled) { row.state = 'canceled'; row.stateText = '已取消'; return }
         await retryChunk(i, 1)
       }
+
+      // 分片全部完成后、进入合并前再查一次取消（否则"最后一个分片传输中"点取消会拦不住）
+      if (row.canceled) { row.state = 'canceled'; row.stateText = '已取消（可重试续传）'; return }
 
       row.stateText = '服务器压缩中，请稍候…'
       row.pct = 100
@@ -77,12 +85,34 @@ export function useUpload() {
       row.videoId = fin.id
       row.title = title
       row.savedCat = effectiveCat(row)
-      row.stateText = '✓ 已上传 · 待发布'
-      row.catMsg = row.savedCat ? ('分类「' + row.savedCat + '」将在发布时生效') : ''
+      if (row.wantPublish) {
+        await publishRow(row) // 之前点过「发布」：自动上线
+      } else {
+        row.stateText = '✓ 已上传 · 待发布'
+        row.catMsg = row.savedCat ? ('分类「' + row.savedCat + '」将在发布时生效') : ''
+      }
     } catch (e) {
+      if (row.canceled) { row.state = 'canceled'; row.stateText = '已取消'; return }
       row.state = 'fail'
       row.stateText = '✗ ' + (e.message || '失败')
     }
+  }
+
+  // 取消上传：停止后续分片（服务器已收分片保留，可用「重试」续传）
+  function cancelRow(row) {
+    row.canceled = true
+    row.paused = false
+    row.state = 'canceled'
+    row.stateText = '已取消（可重试续传）'
+  }
+
+  // 从列表移除条目；若还有未完成的服务器会话则顺手清理分片
+  function dropRow(row) {
+    if (row.uploadId && row.state !== 'done') {
+      uploadApi.abort(row.uploadId).catch(() => {})
+    }
+    const i = rows.indexOf(row)
+    if (i >= 0) rows.splice(i, 1)
   }
 
 // 允许的扩展名（与服务端 ALLOWED_EXT 默认值一致；服务端仍会再校验）
@@ -117,7 +147,7 @@ async function addFiles(files, chunkSize) {
       }
       const row = reactive({
         name: f.name, file: f, titleInput: f.name.replace(/\.[^.]+$/, ''),
-        catPick: '', newCat: '', catMsg: '', savedCat: '', published: false, chunkSize,
+        catPick: '', newCat: '', catMsg: '', savedCat: '', published: false, wantPublish: false, canceled: false, chunkSize,
         pct: 0, state: 'waiting', stateText: '准备中…', paused: false,
         togglePause: () => {}, uploadId: '', videoId: 0, title: '',
       })
@@ -143,7 +173,9 @@ async function publishRow(row) {
     return null
   }
   if (row.state !== 'done' || !row.videoId) {
-    row.catMsg = '上传完成后才能发布'
+    // 还在上传中：记下发布意图，完成时自动执行，不用再点一次
+    row.wantPublish = true
+    row.catMsg = '已标记发布：上传完成后自动上线（名称与分类以完成为准）'
     return null
   }
   try {
@@ -186,9 +218,11 @@ async function saveRowInfo(row) {
 }
 
   function retry(row) {
+    row.canceled = false
     row.state = 'waiting'
+    row.stateText = '准备中…'
     uploadOne(row)
   }
 
-  return { rows, addFiles, retry, saveRowInfo, publishRow }
+  return { rows, addFiles, retry, saveRowInfo, publishRow, cancelRow, dropRow }
 }
