@@ -5,7 +5,15 @@ import { useUpload } from '../composables/useUpload'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import LogoutButton from '../components/LogoutButton.vue'
 
-const { rows, addFiles, retry, saveRowInfo } = useUpload()
+const { rows, addFiles, retry, saveRowInfo, publishRow } = useUpload()
+
+// 发布按钮包装：新分类并入下拉
+async function pubRow(row) {
+  const cat = await publishRow(row)
+  if (cat && !catSuggestions.value.includes(cat)) {
+    catSuggestions.value = [...catSuggestions.value, cat].sort()
+  }
+}
 
 // 保存条目名称+分类；若新建了分类名，成功后并入下拉选项
 async function saveRowCat(row) {
@@ -93,7 +101,9 @@ async function handle(files) {
             </select>
             <input v-if="row.catPick === '__new__'" v-model="row.newCat" class="row-cat-new" type="text"
                    maxlength="60" placeholder="输入新分类名" @keyup.enter="saveRowCat(row)">
-            <button class="row-btn" @click="saveRowCat(row)">保存</button>
+            <button class="row-btn" @click="row.published ? saveRowCat(row) : pubRow(row)">
+              {{ row.published ? '保存' : '发布' }}
+            </button>
             <span v-if="row.catMsg" class="cat-msg">{{ row.catMsg }}</span>
           </div>
         </div>

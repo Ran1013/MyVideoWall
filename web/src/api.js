@@ -97,6 +97,7 @@ export const adminApi = {
   traffic: () => request('/admin.php?act=traffic'),
   trafficToggle: (enabled) => request('/admin.php?act=traffic-toggle', { method: 'POST', body: { enabled } }),
   trafficReset: () => request('/admin.php?act=traffic-reset', { method: 'POST', body: {} }),
+  publish: (id, title, category) => request('/admin.php?act=publish', { method: 'POST', body: { id, title, category } }),
   transcode: () => request('/admin.php?act=transcode'),
   saveTranscode: (p) => request('/admin.php?act=transcode', { method: 'POST', body: p }),
   changePassword: (type, password) => request('/admin.php?act=password-' + type, { method: 'POST', body: { password } }),

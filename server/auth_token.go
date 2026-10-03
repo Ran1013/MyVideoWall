@@ -83,10 +83,12 @@ func requestToken(c *gin.Context) string {
 
 func requireView(pw *PasswordStore) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if _, ok := verifyToken(pw, requestToken(c)); !ok {
+		role, ok := verifyToken(pw, requestToken(c))
+		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"ok": false, "error": "需要访问密码登录"})
 			return
 		}
+		c.Set("role", role)
 		c.Next()
 	}
 }

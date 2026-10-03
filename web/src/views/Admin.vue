@@ -113,6 +113,10 @@ async function renameCat(c) {
   await act(() => adminApi.catRename(c.c, c.newName ?? c.c))
   cats.value.forEach(x => { x.newName = undefined })
 }
+async function publishVideo(v) {
+  if (!v.title.trim()) { err.value = '标题不能为空'; return }
+  await act(() => adminApi.publish(v.id, v.title, v.category), '已发布上线')
+}
 async function clearCat(c) {
   if (!confirm(`清空「${c.c}」？${c.n} 个视频会移出分类（视频保留）。`)) return
   await act(() => adminApi.catClear(c.c))
@@ -212,7 +216,7 @@ async function clearCat(c) {
       <h2>视频管理 <small>{{ items.length }} 个 · 点预览图新窗口播放</small></h2>
       <div class="table-wrap">
         <table>
-          <tr><th>预览</th><th>标题</th><th>分类</th><th>大小</th><th>播放</th><th>时间</th><th colspan="2">操作</th></tr>
+          <tr><th>预览</th><th>标题</th><th>分类</th><th>状态</th><th>大小</th><th>播放</th><th>时间</th><th colspan="2">操作</th></tr>
           <tr v-for="v in items" :key="v.id">
             <td>
               <a class="thumb-mini" :href="'/play/' + v.id" target="_blank">
@@ -221,10 +225,11 @@ async function clearCat(c) {
             </td>
             <td><input v-model="v.title" class="cell-input" type="text" maxlength="120"></td>
             <td><input v-model="v.category" class="cell-input" type="text" maxlength="60" :list="'cats-' + v.id"></td>
+            <td><span :class="v.published ? 'dim' : 'err'">{{ v.published ? '已发布' : '未发布' }}</span></td>
             <td class="mono">{{ fmtSize(v.size) }}</td>
             <td class="mono">{{ v.views }}</td>
             <td class="mono">{{ v.created_at }}</td>
-            <td><button @click="saveVideo(v)">保存</button></td>
+            <td><button v-if="!v.published" @click="publishVideo(v)">发布</button><button v-else @click="saveVideo(v)">保存</button></td>
             <td><button class="danger" @click="delVideo(v)">删除</button></td>
           </tr>
         </table>

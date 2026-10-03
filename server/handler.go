@@ -148,6 +148,11 @@ func (h *Handler) videosGet(c *gin.Context) {
 		failJSON(c, 404, "视频不存在")
 		return
 	}
+	// 未发布的草稿只有管理身份（上传页预览）能打开
+	if !video.Published && c.GetString("role") != "upload" {
+		failJSON(c, 404, "视频不存在")
+		return
+	}
 	sort := c.DefaultQuery("sort", "new")
 	if sort != "hot" {
 		sort = "new"
@@ -544,7 +549,8 @@ func (h *Handler) uploadFinish(c *gin.Context) {
 		generatePoster(filepath.Join(h.cfg.VideoDir, name)) // 封面图：首页卡片只加载它，避免视频请求抢占带宽
 	}
 
-	id, err := h.store.VideoAdd(name, defaultStr(in.Title, m.Base), truncateRunes(strings.TrimSpace(in.Cat), 60), m.Ext, finalSize, m.IP)
+	// 上传先入库为草稿（published=false），在发布时带上最终名称与分类
+	id, err := h.store.VideoAdd(name, defaultStr(in.Title, m.Base), truncateRunes(strings.TrimSpace(in.Cat), 60), m.Ext, finalSize, m.IP, false)
 	if err != nil {
 		failJSON(c, 500, "入库失败")
 		return
@@ -607,6 +613,26 @@ func (h *Handler) adminHandler(c *gin.Context) {
 	case "traffic-reset":
 		h.traffic.Reset()
 		c.JSON(http.StatusOK, gin.H{"ok": true, "traffic": h.traffic.Status()})
+	case "publish":
+		var in struct {
+			ID       int64  `json:"id"`
+			Title    string `json:"title"`
+			Category string `json:"category"`
+		}
+		if err := c.ShouldBindJSON(&in); err != nil || in.ID <= 0 {
+			failJSON(c, 400, "参数不对")
+			return
+		}
+		title := truncateRunes(strings.TrimSpace(in.Title), 120)
+		if title == "" {
+			failJSON(c, 400, "请填写视频名称")
+			return
+		}
+		if err := h.store.VideoPublish(in.ID, title, truncateRunes(strings.TrimSpace(in.Category), 60)); err != nil {
+			failJSON(c, 500, "发布失败")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "message": "已发布上线"})
 	case "transcode":
 		var in TranscodeParams
 		if err := c.ShouldBindJSON(&in); err != nil {
@@ -655,7 +681,7 @@ func (h *Handler) adminList(c *gin.Context) {
 	items := []Video{}
 	for rows.Next() {
 		var v Video
-		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
 			failJSON(c, 500, "查询失败")
 			return
 		}

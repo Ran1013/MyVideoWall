@@ -75,11 +75,8 @@ export function useUpload() {
       row.videoId = fin.id
       row.title = title
       row.savedCat = effectiveCat(row)
-      if (row.savedCat) row.catMsg = '分类「' + row.savedCat + '」已随视频保存'
-      if (!fin.ok) throw new Error(fin.error || '合并失败')
-      row.state = 'done'
-      row.stateText = '✓ 完成'
-      row.pct = 100
+      row.stateText = '✓ 已上传 · 待发布'
+      row.catMsg = row.savedCat ? ('分类「' + row.savedCat + '」将在发布时生效') : ''
     } catch (e) {
       row.state = 'fail'
       row.stateText = '✗ ' + (e.message || '失败')
@@ -118,7 +115,7 @@ async function addFiles(files, chunkSize) {
       }
       const row = reactive({
         name: f.name, file: f, titleInput: f.name.replace(/\.[^.]+$/, ''),
-        catPick: '', newCat: '', catMsg: '', savedCat: '', chunkSize,
+        catPick: '', newCat: '', catMsg: '', savedCat: '', published: false, chunkSize,
         pct: 0, state: 'waiting', stateText: '准备中…', paused: false,
         togglePause: () => {}, uploadId: '', videoId: 0, title: '',
       })
@@ -127,9 +124,38 @@ async function addFiles(files, chunkSize) {
     }
   }
 
-// 行内分类控件的当前取值（下拉选已有 / 选「＋新建」后输入）
+// 计算行内输入的名称与分类
+function rowTitle(row) {
+  return (row.titleInput || '').trim() || row.name.replace(/\.[^.]+$/, '')
+}
 function effectiveCat(row) {
   return (row.catPick === '__new__' ? (row.newCat || '') : (row.catPick || '')).trim()
+}
+
+// 发布：把当前名称+分类一次性提交并上线（未发布的视频）
+async function publishRow(row) {
+  const cat = effectiveCat(row)
+  const title = rowTitle(row)
+  if (row.catPick === '__new__' && !cat) {
+    row.catMsg = '✗ 请先输入新分类名'
+    return null
+  }
+  if (row.state !== 'done' || !row.videoId) {
+    row.catMsg = '上传完成后才能发布'
+    return null
+  }
+  try {
+    await adminApi.publish(row.videoId, title, cat)
+    row.published = true
+    row.title = title
+    row.savedCat = cat
+    row.stateText = '✓ 已发布上线'
+    row.catMsg = cat ? ('已发布 · 分类「' + cat + '」') : '已发布 · 未设分类'
+    return cat
+  } catch (e) {
+    row.catMsg = '✗ 发布失败：' + (e.message || '')
+    return null
+  }
 }
 
 // 保存名称+分类：已完成的上传直接调管理接口更新；上传中的会被 finish 自动带上
@@ -162,5 +188,5 @@ async function saveRowInfo(row) {
     uploadOne(row)
   }
 
-  return { rows, addFiles, retry, saveRowInfo }
+  return { rows, addFiles, retry, saveRowInfo, publishRow }
 }

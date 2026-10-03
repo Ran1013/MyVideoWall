@@ -24,6 +24,7 @@ type Video struct {
 	Size       int64  `json:"size"`
 	Views      int64  `json:"views"`
 	UploaderIP string `json:"uploader_ip,omitempty"`
+	Published  bool   `json:"published"`
 	CreatedAt  string `json:"created_at"`
 	URL        string `json:"url,omitempty"`
 	Poster     string `json:"poster,omitempty"`
@@ -54,7 +55,7 @@ type Stats struct {
 	SizeH    string `json:"size_h,omitempty"`
 }
 
-const videoCols = "id, fname, title, category, ext, size, views, uploader_ip, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at"
+const videoCols = "id, fname, title, category, ext, size, views, uploader_ip, published, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at"
 
 // ensureCNTimeZone 把 MySQL 会话时区固定为北京时间：created_at/ts 都用 SQL NOW() 写入，
 // 而 MySQL 容器默认 UTC，不设的话所有时间会差 8 小时。
@@ -102,6 +103,7 @@ func (s *Store) migrate() error {
 			size       BIGINT UNSIGNED NOT NULL DEFAULT 0,
 			views      INT UNSIGNED NOT NULL DEFAULT 0,
 			uploader_ip VARCHAR(45) NOT NULL DEFAULT '',
+			published  TINYINT(1) NOT NULL DEFAULT 1,
 			created_at DATETIME NOT NULL,
 			KEY idx_cat (category),
 			KEY idx_created (created_at),
@@ -123,13 +125,15 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("建表失败: %w", err)
 		}
 	}
+	// 老库补列（已存在时报错忽略）
+	s.DB.Exec("ALTER TABLE videos ADD COLUMN published TINYINT(1) NOT NULL DEFAULT 1")
 	return nil
 }
 
 /* ---------- 视频列表 / 详情 ---------- */
 
 func (s *Store) VideoList(cfg *Config, cat, q, sort string, page int) ([]Video, int64, []Category, error) {
-	where := []string{}
+	where := []string{"published = 1"}
 	args := []any{}
 	if cat != "" {
 		where = append(where, "category = ?")
@@ -165,7 +169,7 @@ func (s *Store) VideoList(cfg *Config, cat, q, sort string, page int) ([]Video, 
 	items := []Video{}
 	for rows.Next() {
 		var v Video
-		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
 			return nil, 0, nil, err
 		}
 		items = append(items, v)
@@ -179,7 +183,7 @@ func (s *Store) VideoList(cfg *Config, cat, q, sort string, page int) ([]Video, 
 
 func (s *Store) scanVideo(row *sql.Row) (*Video, error) {
 	var v Video
-	err := row.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.CreatedAt)
+	err := row.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -198,7 +202,7 @@ func (s *Store) VideoNeighbors(id int64, sort string) (*Video, *Video, error) {
 	if sort == "hot" {
 		order = "views DESC, created_at DESC"
 	}
-	rows, err := s.DB.Query("SELECT " + videoCols + " FROM videos ORDER BY " + order)
+	rows, err := s.DB.Query("SELECT " + videoCols + " FROM videos WHERE published = 1 ORDER BY " + order)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -207,7 +211,7 @@ func (s *Store) VideoNeighbors(id int64, sort string) (*Video, *Video, error) {
 	var all []Video
 	for rows.Next() {
 		var v Video
-		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
 			return nil, nil, err
 		}
 		all = append(all, v)
@@ -235,14 +239,14 @@ func (s *Store) VideoNeighbors(id int64, sort string) (*Video, *Video, error) {
 func (s *Store) VideoRelated(id int64, cat string, n int) ([]Video, error) {
 	rows := []Video{}
 	if cat != "" {
-		rs, err := s.DB.Query("SELECT "+videoCols+" FROM videos WHERE category = ? AND id <> ? ORDER BY created_at DESC LIMIT ?",
+		rs, err := s.DB.Query("SELECT "+videoCols+" FROM videos WHERE category = ? AND id <> ? AND published = 1 ORDER BY created_at DESC LIMIT ?",
 			cat, id, n)
 		if err != nil {
 			return nil, err
 		}
 		for rs.Next() {
 			var v Video
-			if err := rs.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.CreatedAt); err != nil {
+			if err := rs.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
 				rs.Close()
 				return nil, err
 			}
@@ -251,14 +255,14 @@ func (s *Store) VideoRelated(id int64, cat string, n int) ([]Video, error) {
 		rs.Close()
 	}
 	if len(rows) < n {
-		rs, err := s.DB.Query("SELECT "+videoCols+" FROM videos WHERE id <> ? ORDER BY created_at DESC LIMIT ?", id, n)
+		rs, err := s.DB.Query("SELECT "+videoCols+" FROM videos WHERE id <> ? AND published = 1 ORDER BY created_at DESC LIMIT ?", id, n)
 		if err != nil {
 			return nil, err
 		}
 		defer rs.Close()
 		for rs.Next() {
 			var v Video
-			if err := rs.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.CreatedAt); err != nil {
+			if err := rs.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
 				return nil, err
 			}
 			dup := false
@@ -281,14 +285,21 @@ func (s *Store) VideoIncrViews(id int64) error {
 	return err
 }
 
-func (s *Store) VideoAdd(fname, title, category, ext string, size int64, ip string) (int64, error) {
+func (s *Store) VideoAdd(fname, title, category, ext string, size int64, ip string, published bool) (int64, error) {
 	res, err := s.DB.Exec(
-		"INSERT IGNORE INTO videos (fname, title, category, ext, size, uploader_ip, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())",
-		fname, title, category, ext, size, ip)
+		"INSERT IGNORE INTO videos (fname, title, category, ext, size, uploader_ip, published, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+		fname, title, category, ext, size, ip, published)
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
+}
+
+// VideoPublish 发布：用发布时刻的名称与分类一次性落库并上线
+func (s *Store) VideoPublish(id int64, title, category string) error {
+	_, err := s.DB.Exec("UPDATE videos SET title = ?, category = ?, published = 1 WHERE id = ?",
+		truncateRunes(title, 120), truncateRunes(category, 60), id)
+	return err
 }
 
 func (s *Store) VideoUpdate(id int64, title, category string) error {
@@ -310,7 +321,7 @@ func (s *Store) VideoDelete(id int64) (string, error) {
 }
 
 func (s *Store) Categories() ([]Category, error) {
-	rows, err := s.DB.Query("SELECT category c, COUNT(*) n, COALESCE(SUM(views),0) w FROM videos WHERE category <> '' GROUP BY category ORDER BY n DESC, c ASC")
+	rows, err := s.DB.Query("SELECT category c, COUNT(*) n, COALESCE(SUM(views),0) w FROM videos WHERE category <> '' AND published = 1 GROUP BY category ORDER BY n DESC, c ASC")
 	if err != nil {
 		return nil, err
 	}
