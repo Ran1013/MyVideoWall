@@ -1,0 +1,23 @@
+[Unit]
+Description=VideoWall (Go single binary)
+Documentation=https://example.invalid/videowall
+After=network-online.target mysql.service mysqld.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/videowall
+EnvironmentFile=/opt/videowall/.env
+ExecStart=/opt/videowall/videowall
+Restart=always
+RestartSec=3
+# 日志进 journald：journalctl -u videowall -f
+StandardOutput=journal
+StandardError=journal
+# 基础加固
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

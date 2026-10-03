@@ -1,0 +1,29 @@
+# 系统文件
+.DS_Store
+
+# 前端依赖与构建产物
+web/node_modules/
+web/dist/
+
+# Go embed 的前端产物（构建时由 web/dist 拷入，见 README「从源码构建」）
+server/web-dist/
+
+# 本机构建产物
+dist-deploy/
+*.tar
+
+# 视频等大文件一律不进仓库
+*.mp4
+*.webm
+*.flv
+*.ts
+
+# 本地运行时产生的数据（配置/流量计数/上传分片）
+server/data/config.json
+server/data/transcode.json
+server/data/traffic.json
+server/chunks/
+server/videos/
+
+# 环境变量（含数据库密码）
+.env

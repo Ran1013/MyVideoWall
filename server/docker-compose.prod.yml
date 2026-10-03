@@ -1,0 +1,27 @@
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-""}
+    restart: always
+    network_mode: host          # host 网络：直连 127.0.0.1:3306 的宝塔 MySQL
+    environment:
+      PORT: "8080"
+      MYSQL_DSN: ${MYSQL_DSN:-MyVideos:change_me@tcp(127.0.0.1:3306)/MyVideos?charset=utf8mb4&parseTime=true}
+      VIEW_PASSWORD: ${VIEW_PASSWORD:-view123}
+      UPLOAD_PASSWORD: ${UPLOAD_PASSWORD:-upload123}
+      ALLOW_ORIGIN: ${ALLOW_ORIGIN:-}
+      ALLOWED_EXT: ${ALLOWED_EXT:-mp4,webm,m4v,mov}
+      PAGE_SIZE: ${PAGE_SIZE:-60}
+      CHUNK_MB: ${CHUNK_MB:-4}
+      CHUNK_TTL_HOURS: ${CHUNK_TTL_HOURS:-24}
+      TOKEN_TTL_DAYS: ${TOKEN_TTL_DAYS:-30}
+      VIDEO_DIR: /app/videos
+      CHUNKS_DIR: /app/chunks
+      IP2REGION_XDB: /app/data/ip2region.xdb
+    volumes:
+      - ./videos:/app/videos    # 视频文件存宿主机（迁移=拷目录+导库）
+      - ./chunks:/app/chunks    # 分片临时目录
+      - ./data:/app/data        # ip2region 离线库
