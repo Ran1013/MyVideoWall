@@ -191,6 +191,7 @@ button.primary {
 }
 .row-line1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .row .fn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-title { padding: 6px 10px; }
 .row-cat-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .row-cat-select {
   background: var(--bg); border: 1px solid var(--line); color: var(--txt);

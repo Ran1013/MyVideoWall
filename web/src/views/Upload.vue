@@ -5,11 +5,11 @@ import { useUpload } from '../composables/useUpload'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import LogoutButton from '../components/LogoutButton.vue'
 
-const { rows, addFiles, retry, saveRowCategory } = useUpload()
+const { rows, addFiles, retry, saveRowInfo } = useUpload()
 
-// 保存条目分类；若新建了分类名，成功后并入下拉选项
+// 保存条目名称+分类；若新建了分类名，成功后并入下拉选项
 async function saveRowCat(row) {
-  const cat = await saveRowCategory(row)
+  const cat = await saveRowInfo(row)
   if (cat && !catSuggestions.value.includes(cat)) {
     catSuggestions.value = [...catSuggestions.value, cat].sort()
   }
@@ -60,7 +60,7 @@ async function handle(files) {
   <main class="center-wrap" style="align-items: flex-start;">
     <div class="panel wide" style="margin-top: 30px;">
       <h2>拖进来就传</h2>
-      <p class="tip">分片上传 · 断网/关页后重选同一文件自动续传 · 分类在每个视频下方单独填写（传完再改也行）· 传完回 <router-link to="/">首页</router-link> 看</p>
+      <p class="tip">分片上传 · 断网/关页后重选同一文件自动续传 · 名称与分类在每个视频下方填写（传完再改也行）· 传完回 <router-link to="/">首页</router-link> 看</p>
 
       <div class="dz" :class="{ over: dragging }"
            @click="pickFiles"
@@ -83,6 +83,8 @@ async function handle(files) {
             </button>
             <button v-if="row.state === 'fail'" class="row-btn" @click="retry(row)">重试</button>
           </div>
+          <input v-model="row.titleInput" class="row-title" type="text" maxlength="120"
+                 placeholder="视频名称（默认同文件名，可修改）" @keyup.enter="saveRowCat(row)">
           <div class="row-cat-line">
             <select v-model="row.catPick" class="row-cat-select" @change="onCatPick(row)">
               <option value="">（不设分类）</option>
@@ -91,7 +93,7 @@ async function handle(files) {
             </select>
             <input v-if="row.catPick === '__new__'" v-model="row.newCat" class="row-cat-new" type="text"
                    maxlength="60" placeholder="输入新分类名" @keyup.enter="saveRowCat(row)">
-            <button class="row-btn" @click="saveRowCat(row)">保存分类</button>
+            <button class="row-btn" @click="saveRowCat(row)">保存</button>
             <span v-if="row.catMsg" class="cat-msg">{{ row.catMsg }}</span>
           </div>
         </div>

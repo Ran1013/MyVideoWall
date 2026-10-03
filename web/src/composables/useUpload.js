@@ -65,8 +65,8 @@ export function useUpload() {
 
       row.stateText = '服务器压缩中，请稍候…'
       row.pct = 100
-      const title = file.name.replace(/\.[^.]+$/, '')
-      // 分类读取行内控件的实时值：上传前/上传中/传完选都算数
+      // 名称与分类都读行内控件的实时值：上传前/上传中/传完改都算数
+      const title = (row.titleInput || '').trim() || file.name.replace(/\.[^.]+$/, '')
       const fin = await uploadApi.finish(row.uploadId, title, effectiveCat(row))
       if (!fin.ok) throw new Error(fin.error || '合并失败')
       row.state = 'done'
@@ -97,6 +97,7 @@ function extOf(name) {
 function failRow(f, msg) {
   rows.unshift(reactive({
     name: f && f.name ? f.name : '(未命名文件)', file: f,
+    titleInput: (f && f.name ? f.name : '').replace(/\.[^.]+$/, ''),
     catPick: '', newCat: '', catMsg: '', savedCat: '',
     pct: 0, state: 'fail', stateText: '✗ ' + msg, paused: false,
     togglePause: () => {}, uploadId: '',
@@ -116,7 +117,8 @@ async function addFiles(files, chunkSize) {
         continue
       }
       const row = reactive({
-        name: f.name, file: f, catPick: '', newCat: '', catMsg: '', savedCat: '', chunkSize,
+        name: f.name, file: f, titleInput: f.name.replace(/\.[^.]+$/, ''),
+        catPick: '', newCat: '', catMsg: '', savedCat: '', chunkSize,
         pct: 0, state: 'waiting', stateText: '准备中…', paused: false,
         togglePause: () => {}, uploadId: '', videoId: 0, title: '',
       })
@@ -130,22 +132,24 @@ function effectiveCat(row) {
   return (row.catPick === '__new__' ? (row.newCat || '') : (row.catPick || '')).trim()
 }
 
-// 保存分类：已完成的上传直接调管理接口更新；上传中的会被 finish 自动带上
+// 保存名称+分类：已完成的上传直接调管理接口更新；上传中的会被 finish 自动带上
 // 返回成功保存的分类名（清空返回空串），失败返回 null
-async function saveRowCategory(row) {
+async function saveRowInfo(row) {
   const cat = effectiveCat(row)
+  const title = (row.titleInput || '').trim() || row.name.replace(/\.[^.]+$/, '')
   if (row.catPick === '__new__' && !cat) {
     row.catMsg = '✗ 请先输入新分类名'
     return null
   }
   if (row.state !== 'done' || !row.videoId) {
-    row.catMsg = cat ? ('上传完成后将自动保存「' + cat + '」') : '未选择分类'
+    row.catMsg = '上传完成后将自动保存名称与分类'
     return null
   }
   try {
-    await adminApi.save(row.videoId, row.title || row.name.replace(/\.[^.]+$/, ''), cat)
+    await adminApi.save(row.videoId, title, cat)
+    row.title = title
     row.savedCat = cat
-    row.catMsg = cat ? ('已保存「' + cat + '」') : '分类已清空'
+    row.catMsg = cat ? ('已保存 · 分类「' + cat + '」') : '已保存 · 未设分类'
     return cat
   } catch (e) {
     row.catMsg = '✗ 保存失败：' + (e.message || '')
@@ -158,5 +162,5 @@ async function saveRowCategory(row) {
     uploadOne(row)
   }
 
-  return { rows, addFiles, retry, saveRowCategory }
+  return { rows, addFiles, retry, saveRowInfo }
 }
