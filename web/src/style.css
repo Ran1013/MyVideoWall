@@ -330,6 +330,25 @@ details.fold > summary:hover h2 { color: var(--acc); }
 .sort-switch button + button { border-left: 1px solid var(--line); }
 .sort-switch button.cur { color: #fff; background: var(--acc); }
 
+/* ---------- 站长精选（置顶） ---------- */
+.featured { padding: 18px 24px 0; }
+.feat-title {
+  margin: 0 0 10px; font-size: 15px; font-weight: normal; color: var(--sub);
+}
+.feat-row {
+  display: flex; gap: 14px;
+  overflow-x: auto; padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+.feat-card { flex: 0 0 260px; }
+.feat-card .thumb-placeholder { font-size: 40px; }
+.pin-badge {
+  position: absolute; left: 10px; bottom: 10px;
+  background: rgba(0, 0, 0, .55); border-radius: 6px;
+  padding: 2px 7px; font-size: 12px; pointer-events: none;
+}
+td button.pin-on { color: var(--acc); border-color: rgba(91, 140, 255, .45); }
+
 /* ---------- 移动端适配（手机看片是主要场景） ---------- */
 @media (max-width: 640px) {
   body { -webkit-text-size-adjust: 100%; }
@@ -349,6 +368,9 @@ details.fold > summary:hover h2 { color: var(--acc); }
   .card .name { font-size: 13px; }
   .cats { padding: 10px 12px 0; }
   .cats button { padding: 6px 11px; }
+  /* 精选区：手机上小卡横滑，一屏约两张 */
+  .featured { padding: 12px 12px 0; }
+  .feat-card { flex: 0 0 62%; }
 
   /* 播放页 */
   .watch { padding: 12px 12px 32px; }

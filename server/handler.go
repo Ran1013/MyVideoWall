@@ -90,6 +90,8 @@ func (h *Handler) videosHandler(c *gin.Context) {
 		h.videosList(c)
 	case c.Request.Method == http.MethodGet && act == "get":
 		h.videosGet(c)
+	case c.Request.Method == http.MethodGet && act == "pinned":
+		h.videosPinned(c)
 	case c.Request.Method == http.MethodPost && act == "view":
 		h.videosView(c)
 	default:
@@ -115,6 +117,27 @@ func (h *Handler) videosList(c *gin.Context) {
 		failJSON(c, 500, "查询失败: "+err.Error())
 		return
 	}
+	h.decorateVideos(c, items)
+	c.JSON(http.StatusOK, gin.H{
+		"ok": true, "items": items, "total": total, "page": page,
+		"pageSize": h.cfg.PageSize, "categories": cats,
+		"trafficBlocked": h.traffic.Exceeded(),
+	})
+}
+
+// videosPinned 首页精选区数据源（观看身份即可；置顶视频同时在普通墙里出现）
+func (h *Handler) videosPinned(c *gin.Context) {
+	items, err := h.store.VideoPinned()
+	if err != nil {
+		failJSON(c, 500, "查询失败")
+		return
+	}
+	h.decorateVideos(c, items)
+	c.JSON(http.StatusOK, gin.H{"ok": true, "items": items})
+}
+
+// decorateVideos 给列表项拼流地址与封面；上传者 IP 不出公开接口
+func (h *Handler) decorateVideos(c *gin.Context, items []Video) {
 	for i := range items {
 		items[i].URL = withTokenURL(h.cfg, c, items[i].Fname)
 		// 只给封面图地址；没有封面则留空，前端用占位块（避免用 video 标签取帧抢带宽）
@@ -126,11 +149,6 @@ func (h *Handler) videosList(c *gin.Context) {
 		}
 		items[i].UploaderIP = ""
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"ok": true, "items": items, "total": total, "page": page,
-		"pageSize": h.cfg.PageSize, "categories": cats,
-		"trafficBlocked": h.traffic.Exceeded(),
-	})
 }
 
 func (h *Handler) videosGet(c *gin.Context) {
@@ -651,6 +669,53 @@ func (h *Handler) adminHandler(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"ok": true, "message": "已发布上线"})
+	case "pin":
+		var in struct {
+			ID     int64 `json:"id"`
+			Pinned bool  `json:"pinned"`
+		}
+		if err := c.ShouldBindJSON(&in); err != nil || in.ID <= 0 {
+			failJSON(c, 400, "参数不对")
+			return
+		}
+		tooMany, err := h.store.VideoPin(in.ID, in.Pinned)
+		if err != nil {
+			failJSON(c, 500, err.Error())
+			return
+		}
+		msg := "已取消置顶"
+		if in.Pinned {
+			msg = "已置顶，首页精选区展示"
+			if tooMany {
+				msg = "已置顶（提醒：精选区已超过 6 条，建议精简）"
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "message": msg})
+	case "pin-move":
+		var in struct {
+			ID  int64  `json:"id"`
+			Dir string `json:"dir"`
+		}
+		if err := c.ShouldBindJSON(&in); err != nil || in.ID <= 0 || (in.Dir != "up" && in.Dir != "down") {
+			failJSON(c, 400, "参数不对")
+			return
+		}
+		moved, err := h.store.VideoPinMove(in.ID, in.Dir)
+		if err != nil {
+			failJSON(c, 500, err.Error())
+			return
+		}
+		msg := "已上移"
+		if in.Dir == "down" {
+			msg = "已下移"
+		}
+		if !moved {
+			msg = "已经在最前面了"
+			if in.Dir == "down" {
+				msg = "已经在最后面了"
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "message": msg})
 	case "transcode":
 		var in TranscodeParams
 		if err := c.ShouldBindJSON(&in); err != nil {
@@ -699,7 +764,7 @@ func (h *Handler) adminList(c *gin.Context) {
 	items := []Video{}
 	for rows.Next() {
 		var v Video
-		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.Pinned, &v.PinOrder, &v.CreatedAt); err != nil {
 			failJSON(c, 500, "查询失败")
 			return
 		}

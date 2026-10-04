@@ -25,6 +25,8 @@ type Video struct {
 	Views      int64  `json:"views"`
 	UploaderIP string `json:"uploader_ip,omitempty"`
 	Published  bool   `json:"published"`
+	Pinned     bool   `json:"pinned"`
+	PinOrder   int    `json:"pin_order"`
 	CreatedAt  string `json:"created_at"`
 	URL        string `json:"url,omitempty"`
 	Poster     string `json:"poster,omitempty"`
@@ -55,7 +57,7 @@ type Stats struct {
 	SizeH    string `json:"size_h,omitempty"`
 }
 
-const videoCols = "id, fname, title, category, ext, size, views, uploader_ip, published, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at"
+const videoCols = "id, fname, title, category, ext, size, views, uploader_ip, published, pinned, pin_order, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at"
 
 // ensureCNTimeZone 把 MySQL 会话时区固定为北京时间：created_at/ts 都用 SQL NOW() 写入，
 // 而 MySQL 容器默认 UTC，不设的话所有时间会差 8 小时。
@@ -104,6 +106,8 @@ func (s *Store) migrate() error {
 			views      INT UNSIGNED NOT NULL DEFAULT 0,
 			uploader_ip VARCHAR(45) NOT NULL DEFAULT '',
 			published  TINYINT(1) NOT NULL DEFAULT 1,
+			pinned     TINYINT(1) NOT NULL DEFAULT 0,
+			pin_order  INT NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL,
 			KEY idx_cat (category),
 			KEY idx_created (created_at),
@@ -127,6 +131,8 @@ func (s *Store) migrate() error {
 	}
 	// 老库补列（已存在时报错忽略）
 	s.DB.Exec("ALTER TABLE videos ADD COLUMN published TINYINT(1) NOT NULL DEFAULT 1")
+	s.DB.Exec("ALTER TABLE videos ADD COLUMN pinned TINYINT(1) NOT NULL DEFAULT 0")
+	s.DB.Exec("ALTER TABLE videos ADD COLUMN pin_order INT NOT NULL DEFAULT 0")
 	return nil
 }
 
@@ -169,7 +175,7 @@ func (s *Store) VideoList(cfg *Config, cat, q, sort string, page int) ([]Video, 
 	items := []Video{}
 	for rows.Next() {
 		var v Video
-		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.Pinned, &v.PinOrder, &v.CreatedAt); err != nil {
 			return nil, 0, nil, err
 		}
 		items = append(items, v)
@@ -183,7 +189,7 @@ func (s *Store) VideoList(cfg *Config, cat, q, sort string, page int) ([]Video, 
 
 func (s *Store) scanVideo(row *sql.Row) (*Video, error) {
 	var v Video
-	err := row.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt)
+	err := row.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.Pinned, &v.PinOrder, &v.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -211,7 +217,7 @@ func (s *Store) VideoNeighbors(id int64, sort string) (*Video, *Video, error) {
 	var all []Video
 	for rows.Next() {
 		var v Video
-		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.Pinned, &v.PinOrder, &v.CreatedAt); err != nil {
 			return nil, nil, err
 		}
 		all = append(all, v)
@@ -246,7 +252,7 @@ func (s *Store) VideoRelated(id int64, cat string, n int) ([]Video, error) {
 		}
 		for rs.Next() {
 			var v Video
-			if err := rs.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
+			if err := rs.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.Pinned, &v.PinOrder, &v.CreatedAt); err != nil {
 				rs.Close()
 				return nil, err
 			}
@@ -262,7 +268,7 @@ func (s *Store) VideoRelated(id int64, cat string, n int) ([]Video, error) {
 		defer rs.Close()
 		for rs.Next() {
 			var v Video
-			if err := rs.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.CreatedAt); err != nil {
+			if err := rs.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.Pinned, &v.PinOrder, &v.CreatedAt); err != nil {
 				return nil, err
 			}
 			dup := false
@@ -300,6 +306,93 @@ func (s *Store) VideoPublish(id int64, title, category string) error {
 	_, err := s.DB.Exec("UPDATE videos SET title = ?, category = ?, published = 1 WHERE id = ?",
 		truncateRunes(title, 120), truncateRunes(category, 60), id)
 	return err
+}
+
+// VideoPinned 首页精选区：已发布且置顶的视频，按 pin_order 升序（最多 20 条兜底）
+func (s *Store) VideoPinned() ([]Video, error) {
+	rows, err := s.DB.Query("SELECT " + videoCols + " FROM videos WHERE published = 1 AND pinned = 1 ORDER BY pin_order ASC, id ASC LIMIT 20")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Video{}
+	for rows.Next() {
+		var v Video
+		if err := rows.Scan(&v.ID, &v.Fname, &v.Title, &v.Category, &v.Ext, &v.Size, &v.Views, &v.UploaderIP, &v.Published, &v.Pinned, &v.PinOrder, &v.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, v)
+	}
+	return items, nil
+}
+
+// VideoPin 置顶/取消置顶。置顶追加到精选区末尾（返回值=置顶后是否超过 6 条，供管理端提醒）；
+// 取消时清零 pin_order。精选区内部顺序用 pin-move 微调，不依赖数字语义。
+func (s *Store) VideoPin(id int64, pinned bool) (bool, error) {
+	var n int
+	if err := s.DB.QueryRow("SELECT COUNT(*) FROM videos WHERE id = ?", id).Scan(&n); err != nil || n == 0 {
+		return false, fmt.Errorf("视频不存在")
+	}
+	if !pinned {
+		_, err := s.DB.Exec("UPDATE videos SET pinned = 0, pin_order = 0 WHERE id = ?", id)
+		return false, err
+	}
+	var maxOrder sql.NullInt64
+	if err := s.DB.QueryRow("SELECT MAX(pin_order) FROM videos WHERE pinned = 1").Scan(&maxOrder); err != nil {
+		return false, err
+	}
+	if _, err := s.DB.Exec("UPDATE videos SET pinned = 1, pin_order = ? WHERE id = ?", maxOrder.Int64+1, id); err != nil {
+		return false, err
+	}
+	if err := s.DB.QueryRow("SELECT COUNT(*) FROM videos WHERE pinned = 1").Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 6, nil
+}
+
+// VideoPinMove 在精选区内上移/下移一位（与相邻置顶视频交换 pin_order），返回是否真的移动
+func (s *Store) VideoPinMove(id int64, dir string) (bool, error) {
+	rows, err := s.DB.Query("SELECT id, pin_order FROM videos WHERE pinned = 1 ORDER BY pin_order ASC, id ASC")
+	if err != nil {
+		return false, err
+	}
+	var ids []int64
+	var orders []int
+	for rows.Next() {
+		var vid int64
+		var o int
+		if err := rows.Scan(&vid, &o); err != nil {
+			rows.Close()
+			return false, err
+		}
+		ids = append(ids, vid)
+		orders = append(orders, o)
+	}
+	rows.Close()
+	cur := -1
+	for i := range ids {
+		if ids[i] == id {
+			cur = i
+			break
+		}
+	}
+	if cur < 0 {
+		return false, fmt.Errorf("视频未置顶")
+	}
+	j := cur - 1
+	if dir != "up" {
+		j = cur + 1
+	}
+	if j < 0 || j >= len(ids) {
+		return false, nil // 已在顶部/底部
+	}
+	if _, err := s.DB.Exec("UPDATE videos SET pin_order = ? WHERE id = ?", orders[j], ids[cur]); err != nil {
+		return false, err
+	}
+	if _, err := s.DB.Exec("UPDATE videos SET pin_order = ? WHERE id = ?", orders[cur], ids[j]); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) VideoUpdate(id int64, title, category string) error {

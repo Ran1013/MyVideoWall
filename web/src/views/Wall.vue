@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { videoList, isUpload, streamUrl } from '../api'
+import { videoList, videoPinned, isUpload, streamUrl } from '../api'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import LogoutButton from '../components/LogoutButton.vue'
 
@@ -13,6 +13,7 @@ const page = ref(1)
 const items = ref([])
 const total = ref(0)
 const cats = ref([])
+const pinned = ref([])
 const loading = ref(true)
 const err = ref('')
 
@@ -31,9 +32,19 @@ async function load() {
   }
 }
 
+// 精选区与搜索/分类无关，进首页拉一次即可（置顶视频同时在下面的墙里出现）
+async function loadPinned() {
+  try {
+    pinned.value = (await videoPinned()).items
+  } catch {
+    pinned.value = []
+  }
+}
+
 watch([q, cat, sort], () => { page.value = 1; load() })
 watch(page, load)
 load()
+loadPinned()
 
 const pages = () => Math.max(1, Math.ceil(total.value / 60))
 
@@ -68,6 +79,26 @@ function pickCat(c) { cat.value = cat.value === c ? '' : c }
     </button>
   </nav>
 
+  <!-- 站长精选：置顶视频横排大卡；搜索/分类浏览时隐藏（那时用户在找特定内容） -->
+  <section v-if="pinned.length && !q && !cat" class="featured" aria-label="站长精选">
+    <h2 class="feat-title">📌 站长精选</h2>
+    <div class="feat-row">
+      <router-link v-for="it in pinned" :key="'p' + it.id" class="card feat-card" :to="'/play/' + it.id">
+        <div class="thumb">
+          <img v-if="it.poster" :src="streamUrl(it.poster)" :alt="it.title" loading="lazy">
+          <div v-else class="thumb-placeholder">🎬</div>
+          <span class="play">▶ 播放</span>
+          <span v-if="it.category" class="tag">{{ it.category }}</span>
+          <span class="pin-badge">📌</span>
+        </div>
+        <figcaption>
+          <div class="name" :title="it.title">{{ it.title }}</div>
+          <div class="meta">{{ fmtDate(it.created_at) }} · {{ fmtSize(it.size) }}</div>
+        </figcaption>
+      </router-link>
+    </div>
+  </section>
+
   <main>
     <div v-if="err" class="empty">{{ err }}</div>
     <div v-else-if="loading" class="empty">加载中…</div>
@@ -83,6 +114,7 @@ function pickCat(c) { cat.value = cat.value === c ? '' : c }
             <div v-else class="thumb-placeholder">🎬</div>
             <span class="play">▶ 播放</span>
             <span v-if="it.category" class="tag">{{ it.category }}</span>
+            <span v-if="it.pinned" class="pin-badge">📌</span>
           </div>
           <figcaption>
             <div class="name" :title="it.title">{{ it.title }}</div>

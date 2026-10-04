@@ -117,6 +117,21 @@ async function publishVideo(v) {
   if (!v.title.trim()) { err.value = '标题不能为空'; return }
   await act(() => adminApi.publish(v.id, v.title, v.category), '已发布上线')
 }
+
+/* 置顶：精选区内部顺序在管理页用 ▲▼ 微调（后端交换 pin_order，前端不感知数字） */
+const pinnedOrdered = () => items.value.filter(x => x.pinned).sort((a, b) => a.pin_order - b.pin_order)
+const isFirstPin = (v) => { const p = pinnedOrdered(); return p.length > 0 && p[0].id === v.id }
+const isLastPin = (v) => { const p = pinnedOrdered(); return p.length > 0 && p[p.length - 1].id === v.id }
+async function pinVideo(v) {
+  if (pinnedOrdered().length >= 6 && !confirm('精选区已有 6 条，再多首页会偏挤，仍要置顶？')) return
+  await act(() => adminApi.pin(v.id, true))
+}
+async function unpinVideo(v) {
+  await act(() => adminApi.pin(v.id, false))
+}
+async function movePin(v, dir) {
+  await act(() => adminApi.pinMove(v.id, dir))
+}
 async function clearCat(c) {
   if (!confirm(`清空「${c.c}」？${c.n} 个视频会移出分类（视频保留）。`)) return
   await act(() => adminApi.catClear(c.c))
@@ -213,7 +228,7 @@ async function clearCat(c) {
     </section>
 
     <section class="panel-block">
-      <h2>视频管理 <small>{{ items.length }} 个 · 点预览图新窗口播放</small></h2>
+      <h2>视频管理 <small>{{ items.length }} 个 · 点预览图新窗口播放 · 置顶的视频进首页「站长精选」</small></h2>
       <div class="table-wrap">
         <table>
           <tr><th>预览</th><th>标题</th><th>分类</th><th>状态</th><th>大小</th><th>播放</th><th>时间</th><th colspan="2">操作</th></tr>
@@ -225,11 +240,22 @@ async function clearCat(c) {
             </td>
             <td><input v-model="v.title" class="cell-input" type="text" maxlength="120"></td>
             <td><input v-model="v.category" class="cell-input" type="text" maxlength="60" :list="'cats-' + v.id"></td>
-            <td><span :class="v.published ? 'dim' : 'err'">{{ v.published ? '已发布' : '未发布' }}</span></td>
+            <td><span :class="v.published ? 'dim' : 'err'">{{ v.published ? '已发布' : '未发布' }}</span><span v-if="v.pinned" class="dim"> · 📌</span></td>
             <td class="mono">{{ fmtSize(v.size) }}</td>
             <td class="mono">{{ v.views }}</td>
             <td class="mono">{{ v.created_at }}</td>
-            <td><button v-if="!v.published" @click="publishVideo(v)">发布</button><button v-else @click="saveVideo(v)">保存</button></td>
+            <td>
+              <button v-if="!v.published" @click="publishVideo(v)">发布</button>
+              <button v-else @click="saveVideo(v)">保存</button>
+              <template v-if="v.published">
+                <button v-if="!v.pinned" @click="pinVideo(v)">置顶</button>
+                <template v-else>
+                  <button class="pin-on" @click="unpinVideo(v)">取消置顶</button>
+                  <button v-if="!isFirstPin(v)" :title="'在精选区里前移'" @click="movePin(v, 'up')">▲</button>
+                  <button v-if="!isLastPin(v)" :title="'在精选区里后移'" @click="movePin(v, 'down')">▼</button>
+                </template>
+              </template>
+            </td>
             <td><button class="danger" @click="delVideo(v)">删除</button></td>
           </tr>
         </table>

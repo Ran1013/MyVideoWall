@@ -59,6 +59,9 @@ export function videoList({ q = '', cat = '', sort = 'new', p = 1 } = {}) {
 export function videoGet(id) {
   return request('/videos.php?act=get&id=' + id)
 }
+export function videoPinned() {
+  return request('/videos.php?act=pinned')
+}
 export function videoMarkViewed(id) {
   return request('/videos.php?act=view', { method: 'POST', body: { id } })
 }
@@ -98,6 +101,8 @@ export const adminApi = {
   trafficToggle: (enabled) => request('/admin.php?act=traffic-toggle', { method: 'POST', body: { enabled } }),
   trafficReset: () => request('/admin.php?act=traffic-reset', { method: 'POST', body: {} }),
   publish: (id, title, category) => request('/admin.php?act=publish', { method: 'POST', body: { id, title, category } }),
+  pin: (id, pinned) => request('/admin.php?act=pin', { method: 'POST', body: { id, pinned } }),
+  pinMove: (id, dir) => request('/admin.php?act=pin-move', { method: 'POST', body: { id, dir } }),
   transcode: () => request('/admin.php?act=transcode'),
   saveTranscode: (p) => request('/admin.php?act=transcode', { method: 'POST', body: p }),
   changePassword: (type, password) => request('/admin.php?act=password-' + type, { method: 'POST', body: { password } }),
