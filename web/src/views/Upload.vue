@@ -58,8 +58,10 @@ const dragging = ref(false)
 const fileInput = ref(null)
 const catSuggestions = ref([])
 
-// iOS 的多选+视频选择有已知兼容问题（选了不触发），iPhone 上退化为单选，可多次选取累积
-const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.userAgent.includes('Macintosh') && navigator.maxTouchPoints > 1)
+// 触屏设备（含安卓/国产内核）统一单选：多选模式与视频选择在移动端有各种已知冲突
+const isTouch = /iP(hone|od|ad)|Android/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1
+// 页面内诊断提示：选择器是否打开、浏览器是否真的返回了文件（安卓疑难时可截图反馈）
+const pickHint = ref('')
 
 // 已有分类提示
 adminApi.categories().then(d => { catSuggestions.value = d.items.map(c => c.c) }).catch(() => {})
@@ -68,13 +70,25 @@ adminApi.categories().then(d => { catSuggestions.value = d.items.map(c => c.c) }
 // 就用 fetch 一个小 init 请求取 chunk_size —— init 需要真实文件名，改为上传前第一行初始化时感知）
 let chunkSize = 4 * 1024 * 1024
 
-function onFiles(e) { handle(e.target.files); e.target.value = '' }
+function onFiles(e) {
+  // 关键：先把文件列表快照成数组再重置 input——部分浏览器重置后 FileList 立即清空，
+  // 异步流程（探测请求）之后再读就是空的，表现为"选完没反应"
+  const files = Array.from(e.target.files || [])
+  e.target.value = ''
+  if (files.length) {
+    const f = files[0]
+    pickHint.value = '已选择 ' + files.length + ' 个文件：' + f.name + '（' + Math.max(1, Math.round(f.size / 1048576)) + 'MB）'
+  } else {
+    pickHint.value = '⚠️ 浏览器没有把选择的文件交给网页（兼容性问题）。请尝试下方「直接选择文件」按钮'
+  }
+  handle(files)
+}
 function onDrop(e) {
   dragging.value = false
   handle(e.dataTransfer.files)
 }
 async function handle(files) {
-  if (!files?.length) return
+  if (!files || !files.length) return
   // 先用第一个文件探单片大小；弱网 1.5 秒没回就用默认 4MB（与服务端配置一致），不让用户干等
   try {
     const probe = await Promise.race([
@@ -110,8 +124,18 @@ async function handle(files) {
         点击选择视频上传（手机可直接选相册/文件，iPhone 的 .MOV、OBS 的 .mkv 都支持）· 电脑支持拖拽
         <!-- 透明覆盖整个上传框：点框即直接点在选择器上，兼容所有浏览器内核（含微信 X5/夸克/UC） -->
         <input id="upload-file-input" ref="fileInput" type="file" class="dz-input"
-               :multiple="!isIOS" accept="video/*,.mp4,.webm,.m4v,.mov,.mkv" @change="onFiles">
+               :multiple="!isTouch" accept="video/*,.mp4,.webm,.m4v,.mov,.mkv" @change="onFiles">
       </div>
+
+      <!-- 触屏设备的保底通道：原生选择控件，不依赖任何隐藏/触发技巧 -->
+      <div v-if="isTouch" class="dz-native-wrap">
+        <span class="dz-native-tip">点击上方没反应？请直接点这里选择文件：</span>
+        <input type="file" class="dz-native" accept="video/*,.mp4,.webm,.m4v,.mov,.mkv" @change="onFiles">
+      </div>
+
+      <p v-if="pickHint" class="pick-hint">{{ pickHint }}</p>
+
+      <p class="muted" style="margin-top: 18px">上传组件 v4</p>
 
       <div v-if="pendingRows.length" class="traffic-actions" style="margin-top: 14px">
         <button class="btn" @click="publishAll">发布全部（{{ pendingRows.length }} 个待发布）</button>
