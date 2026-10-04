@@ -103,15 +103,15 @@ async function handle(files) {
       <h2>拖进来就传</h2>
       <p class="tip">分片上传 · 断网/关页后重选同一文件自动续传 · 名称与分类在每个视频下方填写（传完再改也行）· 传完回 <router-link to="/">首页</router-link> 看</p>
 
-      <label class="dz" :class="{ over: dragging }" for="upload-file-input"
-             @dragover.prevent="dragging = true"
-             @dragleave="dragging = false"
-             @drop.prevent="onDrop">
+      <div class="dz" :class="{ over: dragging }"
+           @dragover.prevent="dragging = true"
+           @dragleave="dragging = false"
+           @drop.prevent="onDrop">
         点击选择视频上传（手机可直接选相册/文件，iPhone 的 .MOV、OBS 的 .mkv 都支持）· 电脑支持拖拽
-      </label>
-      <!-- 视觉隐藏而非 display:none：iOS 对隐藏选择框的兼容差，选择后可能不触发事件 -->
-      <input id="upload-file-input" ref="fileInput" type="file" class="file-input-hidden"
-             :multiple="!isIOS" accept="video/*,.mp4,.webm,.m4v,.mov,.mkv" @change="onFiles">
+        <!-- 透明覆盖整个上传框：点框即直接点在选择器上，兼容所有浏览器内核（含微信 X5/夸克/UC） -->
+        <input id="upload-file-input" ref="fileInput" type="file" class="dz-input"
+               :multiple="!isIOS" accept="video/*,.mp4,.webm,.m4v,.mov,.mkv" @change="onFiles">
+      </div>
 
       <div v-if="pendingRows.length" class="traffic-actions" style="margin-top: 14px">
         <button class="btn" @click="publishAll">发布全部（{{ pendingRows.length }} 个待发布）</button>

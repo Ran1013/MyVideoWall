@@ -177,15 +177,17 @@ button.primary {
 
 /* ---------- 上传 ---------- */
 #dz, .dz {
+  display: block; position: relative;
   border: 2px dashed var(--line); border-radius: 14px;
   padding: 48px 20px; text-align: center; color: var(--sub);
   cursor: pointer; transition: border-color .15s, color .15s;
 }
 .dz.over { border-color: var(--acc); color: var(--txt); }
-/* 文件选择框：视觉隐藏但真实存在（display:none 的隐藏框在 iOS 上选择后可能不触发事件） */
-.file-input-hidden {
-  position: absolute; width: 1px; height: 1px;
-  opacity: 0; pointer-events: none;
+/* 透明覆盖整个上传框的选择器：点框=直接点在选择器上，绕开 label/JS 触发的所有内核兼容问题 */
+.dz-input {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
 }
 .upload-fields { margin-top: 14px; }
 .rows { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
