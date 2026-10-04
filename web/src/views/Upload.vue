@@ -5,7 +5,27 @@ import { useUpload } from '../composables/useUpload'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import LogoutButton from '../components/LogoutButton.vue'
 
-const { rows, addFiles, retry, saveRowInfo, publishRow } = useUpload()
+const { rows, addFiles, retry, saveRowInfo, publishRow, cancelRow, dropRow } = useUpload()
+
+// 删除条目：已完成的连服务器视频一起删（已发布会下架），未完成的只移除并清理分片
+async function deleteRow(row) {
+  if (row.videoId) {
+    const msg = row.published
+      ? `删除《${row.title || row.name}》？这是已发布的视频，将从首页下架，文件一并删除且不可恢复。`
+      : `删除《${row.title || row.name}》？该视频尚未发布，文件将被删除。`
+    if (!confirm(msg)) return
+    try {
+      await adminApi.remove(row.videoId)
+    } catch (e) {
+      row.catMsg = '✗ 删除失败：' + (e.message || '')
+      return
+    }
+    dropRow(row)
+    return
+  }
+  if (!confirm('移除这个上传条目？')) return
+  dropRow(row)
+}
 
 // 发布按钮包装：新分类并入下拉
 async function pubRow(row) {
@@ -38,6 +58,9 @@ const dragging = ref(false)
 const fileInput = ref(null)
 const catSuggestions = ref([])
 
+// iOS 的多选+视频选择有已知兼容问题（选了不触发），iPhone 上退化为单选，可多次选取累积
+const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.userAgent.includes('Macintosh') && navigator.maxTouchPoints > 1)
+
 // 已有分类提示
 adminApi.categories().then(d => { catSuggestions.value = d.items.map(c => c.c) }).catch(() => {})
 
@@ -45,7 +68,6 @@ adminApi.categories().then(d => { catSuggestions.value = d.items.map(c => c.c) }
 // 就用 fetch 一个小 init 请求取 chunk_size —— init 需要真实文件名，改为上传前第一行初始化时感知）
 let chunkSize = 4 * 1024 * 1024
 
-function pickFiles() { fileInput.value?.click() }
 function onFiles(e) { handle(e.target.files); e.target.value = '' }
 function onDrop(e) {
   dragging.value = false
@@ -53,10 +75,13 @@ function onDrop(e) {
 }
 async function handle(files) {
   if (!files?.length) return
-  // 先用第一个文件探单片大小（同时它也作为正常上传开始）
+  // 先用第一个文件探单片大小；弱网 1.5 秒没回就用默认 4MB（与服务端配置一致），不让用户干等
   try {
-    const probe = await uploadApi.init(files[0].name, files[0].size, Math.ceil(files[0].size / chunkSize))
-    if (probe.ok && probe.chunk_size) chunkSize = probe.chunk_size
+    const probe = await Promise.race([
+      uploadApi.init(files[0].name, files[0].size, Math.ceil(files[0].size / chunkSize)),
+      new Promise(res => setTimeout(() => res(null), 1500)),
+    ])
+    if (probe && probe.ok && probe.chunk_size) chunkSize = probe.chunk_size
   } catch { /* init 失败会在 useUpload 内部重试并报错 */ }
   // 传 getter：分类在 finish 时实时读取，先选文件后填分类也能生效
   addFiles(Array.from(files), chunkSize)
@@ -78,15 +103,15 @@ async function handle(files) {
       <h2>拖进来就传</h2>
       <p class="tip">分片上传 · 断网/关页后重选同一文件自动续传 · 名称与分类在每个视频下方填写（传完再改也行）· 传完回 <router-link to="/">首页</router-link> 看</p>
 
-      <div class="dz" :class="{ over: dragging }"
-           @click="pickFiles"
-           @dragover.prevent="dragging = true"
-           @dragleave="dragging = false"
-           @drop.prevent="onDrop">
-        点击选择视频上传（手机可直接选相册/文件，iPhone 的 .MOV、OBS 的 .mkv 都支持）· 电脑支持拖拽，可多选
-        <input ref="fileInput" type="file" multiple hidden
-               accept="video/*,.mp4,.webm,.m4v,.mov,.mkv" @change="onFiles">
-      </div>
+      <label class="dz" :class="{ over: dragging }" for="upload-file-input"
+             @dragover.prevent="dragging = true"
+             @dragleave="dragging = false"
+             @drop.prevent="onDrop">
+        点击选择视频上传（手机可直接选相册/文件，iPhone 的 .MOV、OBS 的 .mkv 都支持）· 电脑支持拖拽
+      </label>
+      <!-- 视觉隐藏而非 display:none：iOS 对隐藏选择框的兼容差，选择后可能不触发事件 -->
+      <input id="upload-file-input" ref="fileInput" type="file" class="file-input-hidden"
+             :multiple="!isIOS" accept="video/*,.mp4,.webm,.m4v,.mov,.mkv" @change="onFiles">
 
       <div v-if="pendingRows.length" class="traffic-actions" style="margin-top: 14px">
         <button class="btn" @click="publishAll">发布全部（{{ pendingRows.length }} 个待发布）</button>
@@ -101,7 +126,9 @@ async function handle(files) {
             <button v-if="row.state === 'uploading'" class="row-btn" @click="row.togglePause()">
               {{ row.paused ? '继续' : '暂停' }}
             </button>
-            <button v-if="row.state === 'fail'" class="row-btn" @click="retry(row)">重试</button>
+            <button v-if="row.state === 'uploading' || row.state === 'waiting'" class="row-btn" @click="cancelRow(row)">取消</button>
+            <button v-if="row.state === 'fail' || row.state === 'canceled'" class="row-btn" @click="retry(row)">重试</button>
+            <button class="row-btn danger" @click="deleteRow(row)">删除</button>
           </div>
           <input v-model="row.titleInput" class="row-title" type="text" maxlength="120"
                  placeholder="视频名称（默认同文件名，可修改）" @keyup.enter="saveRowCat(row)">

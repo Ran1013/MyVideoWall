@@ -182,6 +182,11 @@ button.primary {
   cursor: pointer; transition: border-color .15s, color .15s;
 }
 .dz.over { border-color: var(--acc); color: var(--txt); }
+/* 文件选择框：视觉隐藏但真实存在（display:none 的隐藏框在 iOS 上选择后可能不触发事件） */
+.file-input-hidden {
+  position: absolute; width: 1px; height: 1px;
+  opacity: 0; pointer-events: none;
+}
 .upload-fields { margin-top: 14px; }
 .rows { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .row {
@@ -211,6 +216,8 @@ button.primary {
   cursor: pointer; min-width: 44px;
 }
 .row-btn:hover { border-color: var(--acc); }
+.row-btn.danger { color: var(--danger); border-color: rgba(255, 107, 107, .4); }
+.row-btn.danger:hover { border-color: var(--danger); }
 
 /* ---------- 管理页 ---------- */
 .admin { max-width: 1080px; margin: 0 auto; padding: 20px 24px 60px; }
