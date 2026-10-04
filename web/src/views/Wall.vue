@@ -79,9 +79,9 @@ function pickCat(c) { cat.value = cat.value === c ? '' : c }
     </button>
   </nav>
 
-  <!-- 站长精选：置顶视频横排大卡；搜索/分类浏览时隐藏（那时用户在找特定内容） -->
-  <section v-if="pinned.length && !q && !cat" class="featured" aria-label="站长精选">
-    <h2 class="feat-title">📌 站长精选</h2>
+  <!-- 精选视频：置顶视频横排大卡；搜索/分类浏览时隐藏（那时用户在找特定内容） -->
+  <section v-if="pinned.length && !q && !cat" class="featured" aria-label="精选视频">
+    <h2 class="feat-title">📌 精选视频</h2>
     <div class="feat-row">
       <router-link v-for="it in pinned" :key="'p' + it.id" class="card feat-card" :to="'/play/' + it.id">
         <div class="thumb">

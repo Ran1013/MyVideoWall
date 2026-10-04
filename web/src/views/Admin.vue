@@ -228,7 +228,7 @@ async function clearCat(c) {
     </section>
 
     <section class="panel-block">
-      <h2>视频管理 <small>{{ items.length }} 个 · 点预览图新窗口播放 · 置顶的视频进首页「站长精选」</small></h2>
+      <h2>视频管理 <small>{{ items.length }} 个 · 点预览图新窗口播放 · 置顶的视频进首页「精选视频」</small></h2>
       <div class="table-wrap">
         <table>
           <tr><th>预览</th><th>标题</th><th>分类</th><th>状态</th><th>大小</th><th>播放</th><th>时间</th><th colspan="2">操作</th></tr>

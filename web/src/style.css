@@ -330,7 +330,7 @@ details.fold > summary:hover h2 { color: var(--acc); }
 .sort-switch button + button { border-left: 1px solid var(--line); }
 .sort-switch button.cur { color: #fff; background: var(--acc); }
 
-/* ---------- 站长精选（置顶） ---------- */
+/* ---------- 精选视频（置顶） ---------- */
 .featured { padding: 18px 24px 0; }
 .feat-title {
   margin: 0 0 10px; font-size: 15px; font-weight: normal; color: var(--sub);
