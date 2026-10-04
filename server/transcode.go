@@ -64,7 +64,8 @@ func transcodeForWeb(src string, tc *TranscodeStore) (bool, error) {
 	args := []string{
 		"-hide_banner", "-loglevel", "error", "-y",
 		"-i", src,
-		"-vf", fmt.Sprintf("scale='min(%d,iw)':'min(%d,ih)':force_original_aspect_ratio=decrease", p.EdgePx, p.EdgePx),
+		// force_divisible_by=2：手机竖屏等奇数高度视频，x264 要求宽高必须是偶数
+		"-vf", fmt.Sprintf("scale='min(%d,iw)':'min(%d,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2", p.EdgePx, p.EdgePx),
 		"-r", fps,
 		"-c:v", "libx264", "-crf", crf, "-preset", "veryfast",
 		"-maxrate", maxrate, "-bufsize", bufsize,

@@ -542,10 +542,13 @@ func (h *Handler) uploadFinish(c *gin.Context) {
 	// 转码产物一律是 H.264 MP4：源不是 mp4 时把文件名与扩展名一并改成 .mp4，
 	// 避免“mp4 内容顶着 .mkv/.mov 扩展名”被 Safari 等按容器误判而播放失败。
 	finalSize := m.Size
+	transcoded := false
 	if ffmpegAvailable() {
 		replaced, err := transcodeForWeb(dest, h.tc)
 		if err != nil {
 			log.Printf("自动压缩跳过 [%s]：%v", name, err)
+		} else {
+			transcoded = true
 		}
 		if replaced && m.Ext != "mp4" {
 			base := strings.TrimSuffix(name, filepath.Ext(name))
@@ -579,7 +582,7 @@ func (h *Handler) uploadFinish(c *gin.Context) {
 	}
 	os.Remove(dir)
 
-	c.JSON(http.StatusOK, gin.H{"ok": true, "id": id, "name": name})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "id": id, "name": name, "transcoded": transcoded})
 }
 
 /* ---------- 管理 ---------- */

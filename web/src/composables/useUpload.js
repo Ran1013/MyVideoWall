@@ -85,11 +85,14 @@ export function useUpload() {
       row.videoId = fin.id
       row.title = title
       row.savedCat = effectiveCat(row)
+      if (fin.transcoded === false) {
+        row.catMsg = '⚠️ 服务器未能压缩此视频（可能文件异常），将按原样上线，播放可能卡顿'
+      }
       if (row.wantPublish) {
         await publishRow(row) // 之前点过「发布」：自动上线
       } else {
         row.stateText = '✓ 已上传 · 待发布'
-        row.catMsg = row.savedCat ? ('分类「' + row.savedCat + '」将在发布时生效') : ''
+        row.catMsg = (row.catMsg || '') + (row.savedCat ? (' 分类「' + row.savedCat + '」将在发布时生效') : '')
       }
     } catch (e) {
       if (row.canceled) { row.state = 'canceled'; row.stateText = '已取消'; return }
