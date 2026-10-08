@@ -15,5 +15,8 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    // 兼容性：默认目标会保留 ES2020 语法（?? / ?. 等），部分手机/国产浏览器内核解析失败导致白屏。
+    // 降到 es2018 让 esbuild 转译这些语法，覆盖更老的 Android WebView / 国产浏览器。
+    target: ['es2018'],
   },
 })
