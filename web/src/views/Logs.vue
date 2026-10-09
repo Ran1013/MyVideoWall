@@ -28,6 +28,16 @@ async function load() {
 onMounted(load)
 
 function reset() { q.value = ''; action.value = ''; range.value = ''; load() }
+// 手动修正归属地：留空 = 恢复自动判断
+async function editRegion(r) {
+  const v = prompt('修改该 IP 的归属地（留空 = 恢复自动判断）\n格式如：中国·河北省·唐山市·移动', r.region || '')
+  if (v === null) return
+  try {
+    await logsApi.setIpRegion(r.ip, v.trim())
+    await load()
+  } catch (e) { alert('保存失败：' + (e.message || '未知错误')) }
+}
+
 async function clearAll() {
   if (!confirm('确定清空全部访问记录？')) return
   await logsApi.clear()
@@ -47,7 +57,7 @@ async function clearAll() {
 
   <main class="admin">
     <section class="panel-block">
-      <h2>访客记录 <small>共 {{ total }} 条 · 按 IP 聚合，归属地为离线库查询结果</small></h2>
+      <h2>访客记录 <small>共 {{ total }} 条 · 按 IP 聚合；归属地不准时点「改归属地」手动修正（对历史和未来记录同时生效）</small></h2>
 
       <form class="filter-bar" @submit.prevent="load">
         <input v-model="q" type="search" placeholder="搜 IP 或归属地，如 223. 或 深圳">
@@ -70,12 +80,16 @@ async function clearAll() {
       <p v-if="!byIp.length && !loading" class="tip">没有匹配筛选条件的访客记录。</p>
       <div v-else class="table-wrap">
         <table>
-          <tr><th>IP</th><th>归属地</th><th>访问次数</th><th>最近访问</th></tr>
+          <tr><th>IP</th><th>归属地</th><th>访问次数</th><th>最近访问</th><th>操作</th></tr>
           <tr v-for="r in byIp" :key="r.ip">
             <td class="mono">{{ r.ip }}</td>
-            <td><span v-if="r.region">{{ r.region }}</span><span v-else class="dim">未知</span></td>
+            <td>
+              <span v-if="r.region">{{ r.region }}</span><span v-else class="dim">未知</span>
+              <span v-if="r.corrected" class="region-tag">已修正</span>
+            </td>
             <td>{{ r.n }}</td>
             <td class="mono">{{ r.last }}</td>
+            <td><button class="row-btn" @click="editRegion(r)">改归属地</button></td>
           </tr>
         </table>
       </div>

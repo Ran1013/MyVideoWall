@@ -114,4 +114,5 @@ export const logsApi = {
   byIp: (f = {}) => request('/logs.php?act=byip&' + new URLSearchParams(f)),
   recent: (f = {}) => request('/logs.php?act=recent&' + new URLSearchParams(f)),
   clear: () => request('/logs.php?act=clear', { method: 'POST', body: {} }),
+  setIpRegion: (ip, region) => request('/admin.php?act=ip-region', { method: 'POST', body: { ip, region } }),
 }

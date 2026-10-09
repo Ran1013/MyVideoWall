@@ -124,6 +124,11 @@ func (s *Store) migrate() error {
 			KEY idx_ts (ts),
 			KEY idx_ip (ip)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+		`CREATE TABLE IF NOT EXISTS ip_regions (
+			ip         VARCHAR(45)  NOT NULL PRIMARY KEY,
+			region     VARCHAR(255) NOT NULL DEFAULT '',
+			updated_at DATETIME NOT NULL
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 	} {
 		if _, err := s.DB.Exec(ddl); err != nil {
 			return fmt.Errorf("建表失败: %w", err)
@@ -544,8 +549,58 @@ func logFilterWhere(f map[string]string, args []any) (string, []any) {
 }
 
 func (s *Store) LogAdd(ip, region, ua, action string, videoID *int64) error {
+	// 手动修正优先于离线库结果（修正后新旧记录统一）
+	if r, ok := s.IPRegionFor(ip); ok {
+		region = r
+	}
 	_, err := s.DB.Exec("INSERT INTO access_log (ip, region, ua, action, video_id, ts) VALUES (?, ?, ?, ?, ?, NOW())",
 		ip, region, truncateRunes(ua, 255), action, videoID)
+	return err
+}
+
+/* ---------- IP 归属地手动修正 ---------- */
+
+// IPRegionFor 查询该 IP 的手动修正值；无修正返回 ("", false)
+func (s *Store) IPRegionFor(ip string) (string, bool) {
+	var region string
+	if err := s.DB.QueryRow("SELECT region FROM ip_regions WHERE ip = ?", ip).Scan(&region); err != nil || region == "" {
+		return "", false
+	}
+	return region, true
+}
+
+// IPRegionMap 全部修正（ip -> region），供展示层标记"已修正"
+func (s *Store) IPRegionMap() map[string]string {
+	out := map[string]string{}
+	rows, err := s.DB.Query("SELECT ip, region FROM ip_regions")
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ip, region string
+		if rows.Scan(&ip, &region) == nil && region != "" {
+			out[ip] = region
+		}
+	}
+	return out
+}
+
+// SaveIPRegion 保存修正：写 ip_regions 并回填该 IP 的全部历史记录
+func (s *Store) SaveIPRegion(ip, region string) error {
+	if _, err := s.DB.Exec("INSERT INTO ip_regions (ip, region, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE region = VALUES(region), updated_at = NOW()", ip, region); err != nil {
+		return err
+	}
+	_, err := s.DB.Exec("UPDATE access_log SET region = ? WHERE ip = ?", region, ip)
+	return err
+}
+
+// ClearIPRegion 清除修正：恢复为离线库结果 rawRegion，并回填历史记录
+func (s *Store) ClearIPRegion(ip, rawRegion string) error {
+	if _, err := s.DB.Exec("DELETE FROM ip_regions WHERE ip = ?", ip); err != nil {
+		return err
+	}
+	_, err := s.DB.Exec("UPDATE access_log SET region = ? WHERE ip = ?", rawRegion, ip)
 	return err
 }
 

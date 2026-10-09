@@ -223,6 +223,10 @@ button.primary {
 }
 .row-btn:hover { border-color: var(--acc); }
 .row-btn.danger { color: var(--danger); border-color: rgba(255, 107, 107, .4); }
+.region-tag {
+  font-size: 11px; color: var(--acc); border: 1px solid var(--acc);
+  border-radius: 4px; padding: 0 4px; margin-left: 6px; white-space: nowrap;
+}
 .row-btn.danger:hover { border-color: var(--danger); }
 
 /* ---------- 管理页 ---------- */

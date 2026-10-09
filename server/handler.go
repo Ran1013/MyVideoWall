@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -669,6 +670,36 @@ func (h *Handler) adminHandler(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"ok": true, "message": "已发布上线"})
+	case "ip-region":
+		var in struct {
+			IP     string `json:"ip"`
+			Region string `json:"region"`
+		}
+		if err := c.ShouldBindJSON(&in); err != nil {
+			failJSON(c, 400, "参数不对")
+			return
+		}
+		ip := strings.TrimSpace(in.IP)
+		if net.ParseIP(ip) == nil {
+			failJSON(c, 400, "IP 格式不对")
+			return
+		}
+		region := truncateRunes(strings.TrimSpace(in.Region), 200)
+		if region == "" {
+			// 留空 = 清除修正，恢复离线库自动判断
+			raw := regionForIP(ip)
+			if err := h.store.ClearIPRegion(ip, raw); err != nil {
+				failJSON(c, 500, "保存失败")
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"ok": true, "region": raw, "message": "已恢复自动判断"})
+			return
+		}
+		if err := h.store.SaveIPRegion(ip, region); err != nil {
+			failJSON(c, 500, "保存失败")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "region": region, "message": "归属地已修正"})
 	case "pin":
 		var in struct {
 			ID     int64 `json:"id"`
@@ -890,6 +921,14 @@ func (h *Handler) logsHandler(c *gin.Context) {
 			if err != nil {
 				failJSON(c, 500, "查询失败")
 				return
+			}
+			corr := h.store.IPRegionMap()
+			for _, item := range items {
+				if ip, ok := item["ip"].(string); ok {
+					if _, has := corr[ip]; has {
+						item["corrected"] = true
+					}
+				}
 			}
 			c.JSON(http.StatusOK, gin.H{"ok": true, "items": items})
 		case "recent":
